@@ -5,7 +5,7 @@ slug: skyradar
 certified_by: null
 certification_details: null
 published: true
-uuid: 01436c33-3bca-49a4-aeaf-07e400c4a757
+uuid: dd242c90-4515-414e-b884-93bc32e6b33e
 position:
   DASHBOARD_VERSION_KEY: v2
   ROOT_ID:
@@ -49,7 +49,7 @@ position:
     - ROW-0
     meta:
       width: 12
-      height: 18
+      height: 20
       code: "### SkyRadar \u2014 trafic a\xE9rien mondial (donn\xE9es ADS-B OpenSky)\n\
         \nMarts dbt (Parquet) rafra\xEEchis toutes les heures par Dagster. Les vols\
         \ sont **reconstitu\xE9s**\n\xE0 partir des positions (l'ADS-B ne transporte\
@@ -80,9 +80,9 @@ position:
     meta:
       width: 3
       height: 30
-      chartId: 10
+      chartId: 17
       sliceName: "Vols reconstitu\xE9s"
-      uuid: 78ebe427-3ffe-4c01-8f74-48e5d2922977
+      uuid: 52ef1bf9-5469-470f-a97c-12b921c49815
   CHART-complete:
     type: CHART
     id: CHART-complete
@@ -94,9 +94,9 @@ position:
     meta:
       width: 3
       height: 30
-      chartId: 11
+      chartId: 18
       sliceName: Part de vols complets
-      uuid: 1006f715-64f4-4caf-a793-595823b24abe
+      uuid: 81ef794a-c62f-4577-ac19-aca8cf4da34e
   CHART-alerts_total:
     type: CHART
     id: CHART-alerts_total
@@ -108,9 +108,9 @@ position:
     meta:
       width: 3
       height: 30
-      chartId: 12
+      chartId: 19
       sliceName: "Alertes d\xE9tect\xE9es"
-      uuid: dc3b7ff5-91d6-4128-a8ca-84dadeab89b3
+      uuid: 11963206-5331-4f5b-b446-eb48a2f45b10
   CHART-alerts_by_type:
     type: CHART
     id: CHART-alerts_by_type
@@ -122,9 +122,9 @@ position:
     meta:
       width: 3
       height: 30
-      chartId: 13
+      chartId: 20
       sliceName: Alertes par type
-      uuid: 9517ec69-bdb4-42e1-a5c6-24f7ba7c2846
+      uuid: 484b1bae-91f9-4b95-b9ca-e7071e027345
   ROW-2:
     type: ROW
     id: ROW-2
@@ -146,9 +146,9 @@ position:
     meta:
       width: 12
       height: 50
-      chartId: 14
+      chartId: 21
       sliceName: Trafic mondial heure par heure (par zone)
-      uuid: 8dc29ab5-7b20-4f5a-a576-82739b8003fa
+      uuid: dd1d4bf5-63c7-4164-a8a9-57d7e75578b1
   ROW-3:
     type: ROW
     id: ROW-3
@@ -171,9 +171,9 @@ position:
     meta:
       width: 6
       height: 50
-      chartId: 15
+      chartId: 22
       sliceName: Top pays d'immatriculation
-      uuid: ee6f6bed-b531-4412-ae76-b796ae0c199b
+      uuid: 71774029-b25e-4376-8cdf-0c4fab5c2eeb
   CHART-altitudes:
     type: CHART
     id: CHART-altitudes
@@ -185,9 +185,9 @@ position:
     meta:
       width: 6
       height: 50
-      chartId: 16
+      chartId: 23
       sliceName: Distribution des altitudes (positions en vol)
-      uuid: 6ad8b699-f0e0-4b91-a0d3-d48651707898
+      uuid: 93a688a8-ad5d-445a-9307-91509d910381
   ROW-4:
     type: ROW
     id: ROW-4
@@ -210,9 +210,9 @@ position:
     meta:
       width: 6
       height: 60
-      chartId: 17
+      chartId: 24
       sliceName: "A\xE9roports les plus actifs"
-      uuid: 908ea92f-f264-46a7-a918-26d028cb11c1
+      uuid: da0f0f42-ab1c-4bf5-bc48-dfab423d1c12
   CHART-routes:
     type: CHART
     id: CHART-routes
@@ -224,9 +224,9 @@ position:
     meta:
       width: 6
       height: 60
-      chartId: 18
+      chartId: 25
       sliceName: "Routes les plus fr\xE9quentes"
-      uuid: 1abff9f3-e604-401c-bf61-ac7661bb8014
+      uuid: ce9c2670-48a8-487f-a754-d6e5af2818b3
 metadata:
   color_scheme: supersetColors
   refresh_frequency: 300

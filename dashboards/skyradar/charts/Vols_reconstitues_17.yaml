@@ -1,4 +1,4 @@
-slice_name: "Alertes d\xE9tect\xE9es"
+slice_name: "Vols reconstitu\xE9s"
 description: null
 certified_by: null
 certification_details: null
@@ -8,12 +8,12 @@ params:
   metric:
     expressionType: SQL
     sqlExpression: COUNT(*)
-    label: Alertes
+    label: "Vols reconstitu\xE9s"
+  subheader: "d\xE9part et/ou arriv\xE9e identifi\xE9s"
   y_axis_format: ',d'
-  subheader: "squawk, descente rapide, attente\u2026"
-  datasource: 11__table
+  datasource: 12__table
 query_context: null
 cache_timeout: null
-uuid: dc3b7ff5-91d6-4128-a8ca-84dadeab89b3
+uuid: 52ef1bf9-5469-470f-a97c-12b921c49815
 version: 1.0.0
-dataset_uuid: a12e3128-f090-4a65-bd7a-eba2667fdd02
+dataset_uuid: e93ba3b2-3b7a-4888-a4fe-929a99e559c1

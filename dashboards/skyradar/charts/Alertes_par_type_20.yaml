@@ -17,9 +17,9 @@ params:
   row_limit: 20
   show_legend: true
   legendOrientation: right
-  datasource: 11__table
+  datasource: 15__table
 query_context: null
 cache_timeout: null
-uuid: 9517ec69-bdb4-42e1-a5c6-24f7ba7c2846
+uuid: 484b1bae-91f9-4b95-b9ca-e7071e027345
 version: 1.0.0
-dataset_uuid: a12e3128-f090-4a65-bd7a-eba2667fdd02
+dataset_uuid: fcf4f9fb-d27c-4b14-ab63-d5cb61e1c771

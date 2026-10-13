@@ -1,0 +1,23 @@
+slice_name: "MAE de l'ETA - mod\xE8le LightGBM (min)"
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  metric:
+    expressionType: SQL
+    sqlExpression: arg_max(value, trained_at)
+    label: "MAE mod\xE8le (min)"
+  adhoc_filters:
+  - expressionType: SQL
+    sqlExpression: model = 'eta' and metric = 'mae_min'
+    clause: WHERE
+  subheader: "dernier entra\xEEnement, jeu de test (vols les plus r\xE9cents)"
+  y_axis_format: .2f
+  datasource: 18__table
+query_context: null
+cache_timeout: null
+uuid: 5e774b9b-4e5e-4095-b4ca-d2af0d8baefb
+version: 1.0.0
+dataset_uuid: d9ffd10f-3250-482b-a55d-751932e13ee3

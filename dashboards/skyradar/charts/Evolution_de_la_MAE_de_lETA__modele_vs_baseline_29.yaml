@@ -1,0 +1,33 @@
+slice_name: "\xC9volution de la MAE de l'ETA : mod\xE8le vs baseline"
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_line
+params:
+  viz_type: echarts_timeseries_line
+  x_axis: trained_at
+  time_grain_sqla: PT1H
+  metrics:
+  - expressionType: SQL
+    sqlExpression: AVG(value)
+    label: "Mod\xE8le LightGBM"
+  - expressionType: SQL
+    sqlExpression: AVG(baseline_value)
+    label: "Baseline na\xEFve"
+  groupby: []
+  adhoc_filters:
+  - expressionType: SQL
+    sqlExpression: model = 'eta' and metric = 'mae_min'
+    clause: WHERE
+  y_axis_format: .2f
+  y_axis_title: MAE (min)
+  markerEnabled: true
+  markerSize: 8
+  show_legend: true
+  time_range: No filter
+  datasource: 18__table
+query_context: null
+cache_timeout: null
+uuid: a61b7adb-2eb5-4f25-803f-883afcafc64c
+version: 1.0.0
+dataset_uuid: d9ffd10f-3250-482b-a55d-751932e13ee3

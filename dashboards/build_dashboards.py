@@ -1,4 +1,4 @@
-"""Build the SkyRadar Superset dashboard through the REST API, then export it.
+"""Build the SkyRadar Superset dashboards through the REST API, then export them.
 
 Dashboards are "as code": this script (re)creates the DuckDB database, the
 virtual datasets over the mart Parquet files, the charts and the dashboard,
@@ -24,8 +24,6 @@ from typing import Any
 import httpx
 
 DATABASE_NAME = "SkyRadar marts (DuckDB)"
-DASHBOARD_TITLE = "SkyRadar — Trafic aérien"
-DASHBOARD_SLUG = "skyradar"
 MARTS = "/data/marts"
 EXPORT_DIR = Path(__file__).parent / "skyradar"
 
@@ -37,6 +35,10 @@ DATASETS: dict[str, str | None] = {
     "fct_routes": None,
     "fct_alerts_history": "started_at",
     "fct_altitude_profile": "day",
+    "fct_diversions": "arrival_time",
+    "ml_model_metrics": "trained_at",
+    "ml_traffic_forecast": "hour",
+    "ml_flight_anomaly_scores": "last_seen_ts",
 }
 
 
@@ -214,6 +216,144 @@ CHARTS: list[tuple[str, str, str, dict[str, Any], int, int]] = [
 ]
 
 
+def where(sql: str) -> list[dict[str, str]]:
+    return [{"expressionType": "SQL", "sqlExpression": sql, "clause": "WHERE"}]
+
+
+ETA_MAE = "model = 'eta' and metric = 'mae_min'"
+
+ML_CHARTS: list[tuple[str, str, str, dict[str, Any], int, int]] = [
+    (
+        "eta_mae",
+        "ml_model_metrics",
+        "MAE de l'ETA - modèle LightGBM (min)",
+        {
+            "viz_type": "big_number_total",
+            "metric": metric("arg_max(value, trained_at)", "MAE modèle (min)"),
+            "adhoc_filters": where(ETA_MAE),
+            "subheader": "dernier entraînement, jeu de test (vols les plus récents)",
+            "y_axis_format": ".2f",
+        },
+        4,
+        30,
+    ),
+    (
+        "eta_baseline",
+        "ml_model_metrics",
+        "MAE de l'ETA - baseline naïve (min)",
+        {
+            "viz_type": "big_number_total",
+            "metric": metric("arg_max(baseline_value, trained_at)", "MAE baseline (min)"),
+            "adhoc_filters": where(ETA_MAE),
+            "subheader": "distance restante / vitesse sol",
+            "y_axis_format": ".2f",
+        },
+        4,
+        30,
+    ),
+    (
+        "eta_mape",
+        "ml_model_metrics",
+        "Historique des métriques des modèles",
+        {
+            "viz_type": "table",
+            "query_mode": "raw",
+            "all_columns": [
+                "trained_at",
+                "model",
+                "metric",
+                "value",
+                "baseline_value",
+                "n_samples",
+            ],
+            "adhoc_filters": where("model in ('eta', 'traffic_forecast')"),
+            "order_by_cols": [json.dumps(["trained_at", False])],
+            "row_limit": 20,
+        },
+        4,
+        30,
+    ),
+    (
+        "eta_history",
+        "ml_model_metrics",
+        "Évolution de la MAE de l'ETA : modèle vs baseline",
+        {
+            "viz_type": "echarts_timeseries_line",
+            "x_axis": "trained_at",
+            "time_grain_sqla": "PT1H",
+            "metrics": [
+                metric("AVG(value)", "Modèle LightGBM"),
+                metric("AVG(baseline_value)", "Baseline naïve"),
+            ],
+            "groupby": [],
+            "adhoc_filters": where(ETA_MAE),
+            "y_axis_format": ".2f",
+            "y_axis_title": "MAE (min)",
+            "markerEnabled": True,
+            "markerSize": 8,
+            "show_legend": True,
+            "time_range": "No filter",
+        },
+        6,
+        50,
+    ),
+    (
+        "forecast",
+        "ml_traffic_forecast",
+        "Trafic en Europe : observé vs prévision (Holt-Winters)",
+        {
+            "viz_type": "echarts_timeseries_line",
+            "x_axis": "hour",
+            "time_grain_sqla": "PT1H",
+            "metrics": [metric("SUM(value)", "Avions en vol")],
+            "groupby": ["kind"],
+            "adhoc_filters": where("zone = 'Europe'"),
+            "y_axis_format": ",d",
+            "show_legend": True,
+            "time_range": "No filter",
+        },
+        6,
+        50,
+    ),
+    (
+        "outliers",
+        "ml_flight_anomaly_scores",
+        "Vols atypiques (Isolation Forest)",
+        {
+            "viz_type": "table",
+            "query_mode": "raw",
+            "all_columns": ["callsign", "icao24", "anomaly_score", "explanation", "last_seen_ts"],
+            "adhoc_filters": where("is_outlier"),
+            "order_by_cols": [json.dumps(["anomaly_score", False])],
+            "row_limit": 20,
+        },
+        7,
+        55,
+    ),
+    (
+        "diversions",
+        "fct_diversions",
+        "Déroutements détectés",
+        {
+            "viz_type": "table",
+            "query_mode": "raw",
+            "all_columns": [
+                "callsign",
+                "departure_airport",
+                "arrival_airport",
+                "usual_arrival_airport",
+                "usual_arrival_share",
+                "arrival_time",
+            ],
+            "order_by_cols": [json.dumps(["arrival_time", False])],
+            "row_limit": 20,
+        },
+        5,
+        55,
+    ),
+]
+
+
 class Superset:
     def __init__(self, url: str, user: str, password: str) -> None:
         self.client = httpx.Client(base_url=url.rstrip("/"), timeout=60)
@@ -247,11 +387,58 @@ class Superset:
         return dict(response.json())
 
 
-def build(api: Superset) -> int:
+TRAFFIC_INTRO = """### SkyRadar — trafic aérien mondial (données ADS-B OpenSky)
+
+Marts dbt (Parquet) rafraîchis toutes les heures par Dagster. Les vols sont **reconstitués**
+à partir des positions (l'ADS-B ne transporte ni origine ni destination) : un vol commence
+au décollage ou après un trou de plus de 30 min, et ses extrémités sont rattachées à
+l'aéroport le plus proche quand l'avion est au sol ou sous 1 500 m.
+"""
+
+ML_INTRO = """### SkyRadar — modèles de ML (suivis dans MLflow)
+
+**ETA** : LightGBM corrige l'estimation naïve (distance restante / vitesse sol) ; évaluation
+sur les vols les plus récents (split temporel par vol). **Prévision** : Holt-Winters
+(saisonnalité 24 h) contre une baseline saisonnière naïve. **Isolation Forest** sur les
+caractéristiques de trajectoire, et **déroutements** (arrivée différente de la destination
+habituelle du callsign). Les modèles ne s'entraînent qu'au-delà d'un seuil d'historique.
+"""
+
+DASHBOARDS: list[dict[str, Any]] = [
+    {
+        "slug": "skyradar",
+        "title": "SkyRadar — Trafic aérien",
+        "intro": TRAFFIC_INTRO,
+        "charts": CHARTS,
+        "rows": [
+            ["intro"],
+            ["flights", "complete", "alerts_total", "alerts_by_type"],
+            ["traffic"],
+            ["countries", "altitudes"],
+            ["airports", "routes"],
+        ],
+    },
+    {
+        "slug": "skyradar-ml",
+        "title": "SkyRadar — Modèles ML",
+        "intro": ML_INTRO,
+        "charts": ML_CHARTS,
+        "rows": [
+            ["intro"],
+            ["eta_mae", "eta_baseline", "eta_mape"],
+            ["eta_history", "forecast"],
+            ["outliers", "diversions"],
+        ],
+    },
+]
+
+
+def build(api: Superset) -> list[int]:
     # Clean previous objects (idempotent rebuild).
-    api.delete("dashboard", api.find("dashboard", "slug", DASHBOARD_SLUG))
-    for _, _, title, *_ in CHARTS:
-        api.delete("chart", api.find("chart", "slice_name", title))
+    for spec in DASHBOARDS:
+        api.delete("dashboard", api.find("dashboard", "slug", spec["slug"]))
+        for _, _, title, *_ in spec["charts"]:
+            api.delete("chart", api.find("chart", "slice_name", title))
     for name in DATASETS:
         api.delete("dataset", api.find("dataset", "table_name", name))
     api.delete("database", api.find("database", "database_name", DATABASE_NAME))
@@ -286,9 +473,13 @@ def build(api: Superset) -> int:
             ).raise_for_status()
         dataset_ids[name] = dataset_id
 
+    return [build_dashboard(api, spec, dataset_ids) for spec in DASHBOARDS]
+
+
+def build_dashboard(api: Superset, spec: dict[str, Any], dataset_ids: dict[str, int]) -> int:
     chart_ids: dict[str, tuple[int, str, int, int]] = {}
     chart_uuids: dict[int, str] = {}
-    for key, dataset, title, params, width, height in CHARTS:
+    for key, dataset, title, params, width, height in spec["charts"]:
         params = {**params, "datasource": f"{dataset_ids[dataset]}__table"}
         chart_id = api.post(
             "/api/v1/chart/",
@@ -302,16 +493,14 @@ def build(api: Superset) -> int:
         )["id"]
         chart_ids[key] = (chart_id, title, width, height)
         # The layout must reference charts by uuid: ids change on import.
-        chart_uuids[chart_id] = api.client.get(
-            f"/api/v1/chart/{chart_id}"
-        ).raise_for_status().json()["result"].get("uuid") or _uuid_from_export(api, chart_id)
+        chart_uuids[chart_id] = _uuid_from_export(api, chart_id)
 
-    position = layout(chart_ids, chart_uuids)
+    position = layout(spec, chart_ids, chart_uuids)
     dashboard_id = api.post(
         "/api/v1/dashboard/",
         {
-            "dashboard_title": DASHBOARD_TITLE,
-            "slug": DASHBOARD_SLUG,
+            "dashboard_title": spec["title"],
+            "slug": spec["slug"],
             "published": True,
             "position_json": json.dumps(position),
             "json_metadata": json.dumps(
@@ -339,21 +528,16 @@ def _uuid_from_export(api: Superset, chart_id: int) -> str:
     raise RuntimeError(f"uuid not found for chart {chart_id}")
 
 
-def layout(charts: dict[str, tuple[int, str, int, int]], uuids: dict[int, str]) -> dict[str, Any]:
-    rows = [
-        ["intro"],
-        ["flights", "complete", "alerts_total", "alerts_by_type"],
-        ["traffic"],
-        ["countries", "altitudes"],
-        ["airports", "routes"],
-    ]
+def layout(
+    spec: dict[str, Any], charts: dict[str, tuple[int, str, int, int]], uuids: dict[int, str]
+) -> dict[str, Any]:
     position: dict[str, Any] = {
         "DASHBOARD_VERSION_KEY": "v2",
         "ROOT_ID": {"type": "ROOT", "id": "ROOT_ID", "children": ["GRID_ID"]},
         "GRID_ID": {"type": "GRID", "id": "GRID_ID", "children": [], "parents": ["ROOT_ID"]},
-        "HEADER_ID": {"id": "HEADER_ID", "type": "HEADER", "meta": {"text": DASHBOARD_TITLE}},
+        "HEADER_ID": {"id": "HEADER_ID", "type": "HEADER", "meta": {"text": spec["title"]}},
     }
-    for i, row in enumerate(rows):
+    for i, row in enumerate(spec["rows"]):
         row_id = f"ROW-{i}"
         position["GRID_ID"]["children"].append(row_id)
         position[row_id] = {
@@ -373,7 +557,7 @@ def layout(charts: dict[str, tuple[int, str, int, int]], uuids: dict[int, str]) 
                     "id": node_id,
                     "children": [],
                     "parents": parents,
-                    "meta": {"width": 12, "height": 18, "code": INTRO},
+                    "meta": {"width": 12, "height": 20, "code": spec["intro"]},
                 }
                 continue
             chart_id, title, width, height = charts[key]
@@ -393,17 +577,9 @@ def layout(charts: dict[str, tuple[int, str, int, int]], uuids: dict[int, str]) 
     return position
 
 
-INTRO = """### SkyRadar — trafic aérien mondial (données ADS-B OpenSky)
-
-Marts dbt (Parquet) rafraîchis toutes les heures par Dagster. Les vols sont **reconstitués**
-à partir des positions (l'ADS-B ne transporte ni origine ni destination) : un vol commence
-au décollage ou après un trou de plus de 30 min, et ses extrémités sont rattachées à
-l'aéroport le plus proche quand l'avion est au sol ou sous 1 500 m.
-"""
-
-
-def export(api: Superset, dashboard_id: int) -> None:
-    response = api.client.get("/api/v1/dashboard/export/", params={"q": f"!({dashboard_id})"})
+def export(api: Superset, dashboard_ids: list[int]) -> None:
+    ids = ",".join(str(i) for i in dashboard_ids)
+    response = api.client.get("/api/v1/dashboard/export/", params={"q": f"!({ids})"})
     response.raise_for_status()
     if EXPORT_DIR.exists():
         shutil.rmtree(EXPORT_DIR)
@@ -414,7 +590,7 @@ def export(api: Superset, dashboard_id: int) -> None:
             target = EXPORT_DIR / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(bundle.read(member))
-    print(f"Exported dashboard {dashboard_id} to {EXPORT_DIR}")
+    print(f"Exported dashboards {dashboard_ids} to {EXPORT_DIR}")
 
 
 def main() -> None:
@@ -424,8 +600,7 @@ def main() -> None:
     parser.add_argument("--password", default=os.getenv("SUPERSET_ADMIN_PASSWORD", "admin"))
     args = parser.parse_args()
     api = Superset(args.url, args.user, args.password)
-    dashboard_id = build(api)
-    export(api, dashboard_id)
+    export(api, build(api))
 
 
 if __name__ == "__main__":
