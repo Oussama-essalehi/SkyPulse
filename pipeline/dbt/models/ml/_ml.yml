@@ -1,0 +1,24 @@
+version: 2
+
+models:
+  - name: ml_eta_features
+    description: ETA training rows (position of a flight with a known arrival -> seconds to arrival).
+    columns:
+      - name: target_seconds
+        data_tests:
+          - not_null
+          - value_between: {arguments: {min_value: 60, max_value: 72000}}
+      - name: remaining_km
+        data_tests: [not_null]
+      - name: heading_alignment
+        data_tests:
+          - value_between: {arguments: {min_value: -1.0001, max_value: 1.0001}}
+  - name: ml_flight_features
+    description: Trajectory features per flight (Isolation Forest input).
+    columns:
+      - name: flight_id
+        data_tests: [unique, not_null]
+      - name: straightness
+        description: Great-circle displacement / flown path (1 = straight line).
+        data_tests:
+          - value_between: {arguments: {min_value: 0, max_value: 1}}

@@ -1,5 +1,6 @@
 """Dagster definitions: raw lake -> dbt models (+ dbt tests as asset checks)
--> data quality checks -> ML assets, with hourly / daily schedules."""
+-> Soda data contracts -> ML features (dbt) -> trained models (MLflow) -> scores / alerts,
+with an hourly (dbt + quality + scoring) and a daily (training) schedule."""
 
 # No `from __future__ import annotations`: Dagster inspects runtime type hints.
 import os
@@ -21,7 +22,10 @@ from dagster import (
 )
 from dagster_dbt import DbtCliResource, DbtProject, dbt_assets
 
+from skyradar_ml import eta, forecast, outliers
+from skyradar_ml.marts import read_mart
 from skyradar_ml.reconstruction import track_reconstruction_quality
+from skyradar_orchestration import alerts
 from skyradar_orchestration.quality import build_soda_checks
 
 DBT_PROJECT_DIR = Path(os.getenv("DBT_PROJECT_DIR", Path(__file__).parents[3] / "dbt"))
@@ -57,9 +61,21 @@ def skyradar_dbt(context: AssetExecutionContext, dbt: DbtCliResource) -> Any:
     yield from dbt.cli(["build"], context=context).stream()
 
 
+def _meta(values: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in values.items():
+        if isinstance(value, bool) or value is None:
+            out[key] = str(value)
+        elif isinstance(value, int | float):
+            out[key] = MetadataValue.float(float(value))
+        else:
+            out[key] = str(value)
+    return out
+
+
 @asset(
     deps=[AssetKey(["fct_flights"])],
-    group_name="ml",
+    group_name="ml_training",
     kinds={"python", "mlflow"},
     description="Share of reconstructed flights with identified departure / arrival (MLflow).",
 )
@@ -71,22 +87,117 @@ def flight_reconstruction_quality(context: AssetExecutionContext) -> Materialize
     }
     metrics = track_reconstruction_quality(params)
     context.log.info(f"reconstruction metrics: {metrics}")
-    return MaterializeResult(metadata={k: MetadataValue.float(v) for k, v in metrics.items()})
+    return MaterializeResult(metadata=_meta(metrics))
+
+
+@asset(
+    deps=[AssetKey(["ml_eta_features"])],
+    group_name="ml_training",
+    kinds={"lightgbm", "mlflow"},
+    description="LightGBM ETA model vs naive baseline; trains once history is sufficient.",
+)
+def eta_model(context: AssetExecutionContext) -> MaterializeResult:
+    result = eta.train()
+    context.log.info(f"ETA: {result.status} {result.reason} {result.metrics}")
+    return MaterializeResult(
+        metadata=_meta(
+            {
+                "status": result.status,
+                "reason": result.reason,
+                "n_flights": result.n_flights,
+                "n_rows": result.n_rows,
+                **result.metrics,
+            }
+        )
+    )
+
+
+@asset(
+    deps=[AssetKey(["fct_traffic_hourly"])],
+    group_name="ml_scoring",
+    kinds={"statsmodels", "mlflow"},
+    description="Airborne aircraft per zone, next 6 hours (Holt-Winters vs seasonal naive).",
+)
+def traffic_forecast(context: AssetExecutionContext) -> MaterializeResult:
+    result = forecast.run()
+    context.log.info(f"forecast: {result.status} {result.reason}")
+    return MaterializeResult(
+        metadata=_meta(
+            {
+                "status": result.status,
+                "reason": result.reason,
+                "zones": result.zones,
+                **result.metrics,
+            }
+        )
+    )
+
+
+@asset(
+    deps=[AssetKey(["ml_flight_features"])],
+    group_name="ml_scoring",
+    kinds={"sklearn", "mlflow"},
+    description="Isolation Forest trajectory scores; recent outliers published as alerts.",
+)
+def trajectory_outliers(context: AssetExecutionContext) -> MaterializeResult:
+    result = outliers.score()
+    published = 0
+    if result.scores is not None:
+        published = alerts.publish(alerts.outlier_alerts(result.scores))
+    context.log.info(f"outliers: {result.n_outliers}/{result.n_flights}, published {published}")
+    return MaterializeResult(
+        metadata=_meta(
+            {
+                "status": result.status,
+                "reason": result.reason,
+                "n_flights": result.n_flights,
+                "n_outliers": result.n_outliers,
+                "alerts_published": published,
+            }
+        )
+    )
+
+
+@asset(
+    deps=[AssetKey(["fct_diversions"])],
+    group_name="ml_scoring",
+    kinds={"python", "kafka"},
+    description="Recent diversions published to aircraft.alerts.",
+)
+def diversion_alerts(context: AssetExecutionContext) -> MaterializeResult:
+    diversions = read_mart("fct_diversions")
+    found = 0 if diversions is None else len(diversions)
+    published = 0 if diversions is None else alerts.publish(alerts.diversion_alerts(diversions))
+    context.log.info(f"diversions: {found} in history, {published} published")
+    return MaterializeResult(metadata=_meta({"diversions": found, "alerts_published": published}))
 
 
 dbt_hourly_job = define_asset_job(
     "dbt_hourly",
-    selection=AssetSelection.assets(skyradar_dbt) | AssetSelection.checks(*soda_checks),
-    description="Soda contracts on the raw lake, dbt build (models + tests), Soda on marts.",
+    selection=(
+        AssetSelection.assets(skyradar_dbt)
+        | AssetSelection.checks(*soda_checks)
+        | AssetSelection.groups("ml_scoring")
+    ),
+    description="Soda on the raw lake, dbt build (+ tests), Soda on marts, then scoring: "
+    "traffic forecast, trajectory outliers and diversion alerts.",
 )
 ml_daily_job = define_asset_job(
     "ml_daily",
-    selection=AssetSelection.groups("ml"),
-    description="Model training / evaluation tracked in MLflow.",
+    selection=AssetSelection.groups("ml_training"),
+    description="Model training / evaluation tracked in MLflow (ETA, reconstruction quality).",
 )
 
 defs = Definitions(
-    assets=[*raw_lake, skyradar_dbt, flight_reconstruction_quality],
+    assets=[
+        *raw_lake,
+        skyradar_dbt,
+        flight_reconstruction_quality,
+        eta_model,
+        traffic_forecast,
+        trajectory_outliers,
+        diversion_alerts,
+    ],
     asset_checks=soda_checks,
     jobs=[dbt_hourly_job, ml_daily_job],
     schedules=[
