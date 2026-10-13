@@ -39,7 +39,7 @@ class AnomalyDetector:
         self._sightings: dict[str, int] = {}
         self._last_snapshot: dict[str, int] = {}
         self._coverage: dict[int, Counter[tuple[int, int]]] = {}
-        self._previous_snapshot: int | None = None
+        self._snapshots: deque[int] = deque(maxlen=self.config.signal_loss_confirm_snapshots + 1)
 
     @property
     def tracked(self) -> int:
@@ -91,24 +91,36 @@ class AnomalyDetector:
             cell = coverage_cell(state.latitude, state.longitude, self.config.signal_loss_cell_deg)
             self._coverage.setdefault(state.snapshot_time, Counter())[cell] += 1
 
+    def signal_loss_enabled(self, poll_interval_seconds: float) -> bool:
+        """Whether polling is frequent enough for the signal-loss rule to ever fire."""
+        cfg = self.config
+        return (
+            poll_interval_seconds * cfg.signal_loss_confirm_snapshots
+            <= cfg.signal_loss_max_extrapolation_s
+        )
+
     def on_snapshot(self, meta: SnapshotMeta, now: float | None = None) -> list[Alert]:
         """Called once all states of a snapshot were processed: detects signal losses.
 
-        Only aircraft present in the previous snapshot and missing from this one are
-        evaluated, so each disappearance is reported once. Replays are skipped: when a
+        Only aircraft last seen exactly ``signal_loss_confirm_snapshots`` snapshots ago
+        (and missing from every snapshot since) are evaluated, so each disappearance is
+        reported once and transient dropouts are ignored. Replays are skipped: when a
         replay loops, every aircraft of the last snapshot "disappears".
         """
         now = now or time.time()
         events: list[Alert] = []
         cells = self._coverage.get(meta.snapshot_time)
-        previous = self._previous_snapshot
-        self._previous_snapshot = meta.snapshot_time
+        if self._snapshots and self._snapshots[-1] >= meta.snapshot_time:
+            return events  # duplicate (at-least-once delivery) or out of order
+        self._snapshots.append(meta.snapshot_time)
         for old in [t for t in self._coverage if t < meta.snapshot_time - 3600]:
             del self._coverage[old]
-        if not cells or previous is None or meta.source == "replay":
+        complete = len(self._snapshots) > self.config.signal_loss_confirm_snapshots
+        if not cells or not complete or meta.source == "replay":
             return events
+        reference = self._snapshots[0]
         for icao24, seen in self._last_snapshot.items():
-            if seen != previous or (icao24, AlertType.SIGNAL_LOSS) in self._active:
+            if seen != reference or (icao24, AlertType.SIGNAL_LOSS) in self._active:
                 continue
             track = self._tracks.get(icao24)
             if not track:

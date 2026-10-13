@@ -177,6 +177,7 @@ def test_signal_loss_in_covered_area() -> None:
             [cruising(1000), *crowd(1000, 48.0, 2.0)],
             [cruising(1096), *crowd(1096, 48.0, 2.3)],
             crowd(1192, 48.0, 2.6),  # our aircraft is gone, neighbours still received
+            crowd(1288, 48.0, 2.9),  # ... and still gone: confirmed
         ],
     )
     lost = [e for e in events if e.type is AlertType.SIGNAL_LOSS]
@@ -184,7 +185,7 @@ def test_signal_loss_in_covered_area() -> None:
     assert lost[0].icao24 == "abc123"
     assert lost[0].details["neighbours"] >= 5
     # It comes back: the alert is resolved.
-    back = detector.process(cruising(1288), now=1288)
+    back = detector.process(cruising(1384), now=1384)
     assert [(e.type, e.status) for e in back] == [(AlertType.SIGNAL_LOSS, AlertStatus.RESOLVED)]
 
 
@@ -196,6 +197,7 @@ def test_no_signal_loss_when_leaving_coverage() -> None:
             [cruising(1000), *crowd(1000, 48.0, 2.0)],
             [cruising(1096), *crowd(1096, 48.0, 2.3)],
             crowd(1192, 10.0, -40.0),  # nobody received where the aircraft should be
+            crowd(1288, 10.0, -40.0),
         ],
     )
     assert not [e for e in events if e.type is AlertType.SIGNAL_LOSS]
@@ -203,7 +205,12 @@ def test_no_signal_loss_when_leaving_coverage() -> None:
 
 @pytest.mark.parametrize(
     "override",
-    [{"baro_altitude": 1_500.0}, {"vertical_rate": -12.0}, {"on_ground": True}],
+    [
+        {"baro_altitude": 1_500.0},
+        {"baro_altitude": 6_500.0},
+        {"vertical_rate": -12.0},
+        {"on_ground": True},
+    ],
 )
 def test_no_signal_loss_for_low_descending_or_ground(override: dict[str, object]) -> None:
     detector = AnomalyDetector()
@@ -213,6 +220,7 @@ def test_no_signal_loss_for_low_descending_or_ground(override: dict[str, object]
             [cruising(1000, **override), *crowd(1000, 48.0, 2.0)],
             [cruising(1096, **override), *crowd(1096, 48.0, 2.3)],
             crowd(1192, 48.0, 2.6),
+            crowd(1288, 48.0, 2.9),
         ],
     )
     assert not [e for e in events if e.type is AlertType.SIGNAL_LOSS]
@@ -222,6 +230,7 @@ def test_no_signal_loss_in_replay_or_single_sighting() -> None:
     snapshots = [
         [cruising(1096), *crowd(1096, 48.0, 2.3)],
         crowd(1192, 48.0, 2.6),
+        crowd(1288, 48.0, 2.9),
     ]
     # Only one sighting before disappearing: not enough evidence.
     assert not [
@@ -233,3 +242,37 @@ def test_no_signal_loss_in_replay_or_single_sighting() -> None:
         for e in run_snapshots(AnomalyDetector(), replay, source="replay")
         if e.type is AlertType.SIGNAL_LOSS
     ]
+
+
+def test_no_signal_loss_for_a_transient_dropout() -> None:
+    """Absent from a single snapshot, back in the next one: no alert at all."""
+    detector = AnomalyDetector()
+    events = run_snapshots(
+        detector,
+        [
+            [cruising(1000), *crowd(1000, 48.0, 2.0)],
+            [cruising(1096), *crowd(1096, 48.0, 2.3)],
+            crowd(1192, 48.0, 2.6),
+            [cruising(1288), *crowd(1288, 48.0, 2.9)],
+            crowd(1384, 48.0, 3.2),
+        ],
+    )
+    assert not [e for e in events if e.type is AlertType.SIGNAL_LOSS]
+
+
+def test_signal_loss_disabled_with_sparse_polling() -> None:
+    """Anonymous polling (16 min): too long to extrapolate, the aircraft may have landed."""
+    detector = AnomalyDetector()
+    assert detector.signal_loss_enabled(96)
+    assert not detector.signal_loss_enabled(960)
+    t = [1000 + 960 * i for i in range(4)]
+    events = run_snapshots(
+        detector,
+        [
+            [cruising(t[0]), *crowd(t[0], 48.0, 2.0)],
+            [cruising(t[1]), *crowd(t[1], 48.0, 4.9)],
+            crowd(t[2], 48.0, 7.8),
+            crowd(t[3], 48.0, 10.7),
+        ],
+    )
+    assert not [e for e in events if e.type is AlertType.SIGNAL_LOSS]

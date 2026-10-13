@@ -52,6 +52,7 @@ async def run_async() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
     last_evict = time.monotonic()
+    signal_loss_enabled: bool | None = None
     pending_snapshots: list[tuple[float, SnapshotMeta]] = []
     log.info("anomaly_detector_started")
     try:
@@ -76,7 +77,17 @@ async def run_async() -> None:
             while (
                 pending_snapshots and time.monotonic() - pending_snapshots[0][0] > SNAPSHOT_DELAY_S
             ):
-                events.extend(detector.on_snapshot(pending_snapshots.pop(0)[1]))
+                meta = pending_snapshots.pop(0)[1]
+                enabled = detector.signal_loss_enabled(meta.poll_interval_seconds)
+                if enabled != signal_loss_enabled:
+                    signal_loss_enabled = enabled
+                    log.info(
+                        "signal_loss_rule",
+                        enabled=enabled,
+                        poll_interval_seconds=meta.poll_interval_seconds,
+                        reason=None if enabled else "polling too sparse (anonymous mode?)",
+                    )
+                events.extend(detector.on_snapshot(meta))
             if time.monotonic() - last_evict > 60:
                 events.extend(detector.evict_stale(time.time()))
                 last_evict = time.monotonic()

@@ -30,12 +30,19 @@ class RuleConfig:
     confinement_max_radius_m: float = 15_000.0
     confinement_min_path_ratio: float = 3.0
     min_airborne_altitude_m: float = 300.0
-    signal_loss_min_altitude_m: float = 6_000.0
+    # Cruise only: below ~FL250 an aircraft is often descending towards an airport,
+    # where low-altitude receiver coverage is patchy.
+    signal_loss_min_altitude_m: float = 7_500.0
     signal_loss_min_vertical_rate_ms: float = -5.0  # descending aircraft may simply land
     signal_loss_min_sightings: int = 2
+    # Missing from this many consecutive snapshots: ~1 in 5 aircraft absent from one
+    # snapshot is back in the next one (measured on real OpenSky data).
+    signal_loss_confirm_snapshots: int = 2
     signal_loss_cell_deg: float = 2.0
     signal_loss_min_neighbours: int = 5
-    signal_loss_max_extrapolation_s: float = 1_800.0
+    # Beyond this, the projected position is too uncertain (and the aircraft may well
+    # have landed): with anonymous polling (16 min) the rule is effectively disabled.
+    signal_loss_max_extrapolation_s: float = 600.0
 
 
 @dataclass(frozen=True)
