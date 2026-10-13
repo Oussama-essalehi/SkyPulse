@@ -1,0 +1,19 @@
+slice_name: "Vols reconstitu\xE9s"
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  metric:
+    expressionType: SQL
+    sqlExpression: COUNT(*)
+    label: "Vols reconstitu\xE9s"
+  subheader: "d\xE9part et/ou arriv\xE9e identifi\xE9s"
+  y_axis_format: ',d'
+  datasource: 8__table
+query_context: null
+cache_timeout: null
+uuid: 78ebe427-3ffe-4c01-8f74-48e5d2922977
+version: 1.0.0
+dataset_uuid: 00f97b08-1984-410c-8141-ca98d21b429f

@@ -8,7 +8,7 @@ dependencies = [
     "pydantic-settings>=2.4",
     "structlog>=24.4",
     "orjson>=3.10",
-    "aiokafka>=0.11",
+    "aiokafka[lz4]>=0.11",
 ]
 
 [project.optional-dependencies]

@@ -12,6 +12,7 @@ export interface RenderBuffers {
 }
 
 const TELEPORT_KM = 50;
+export const MAX_ALTITUDE_FILTER = 15000;
 
 /**
  * Mutable aircraft store, deliberately outside React state: with >10 000
@@ -101,7 +102,9 @@ export class AircraftStore {
     if (filters.country && a.country !== filters.country) return false;
     if (!a.onGround) {
       const alt = a.alt ?? 0;
-      if (alt < filters.minAlt || alt > filters.maxAlt) return false;
+      // The slider maximum means "no upper bound" (a few aircraft report > 15 km).
+      if (alt < filters.minAlt || (filters.maxAlt < MAX_ALTITUDE_FILTER && alt > filters.maxAlt))
+        return false;
     }
     return true;
   }

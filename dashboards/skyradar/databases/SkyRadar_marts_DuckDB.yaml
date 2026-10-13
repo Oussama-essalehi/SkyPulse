@@ -1,0 +1,16 @@
+database_name: SkyRadar marts (DuckDB)
+sqlalchemy_uri: 'duckdb:///:memory:'
+cache_timeout: null
+expose_in_sqllab: true
+allow_run_async: false
+allow_ctas: false
+allow_cvas: false
+allow_dml: false
+allow_file_upload: false
+extra:
+  metadata_params: {}
+  engine_params: {}
+  metadata_cache_timeout: {}
+  schemas_allowed_for_file_upload: []
+uuid: 95ff5c60-0208-4b55-8267-2aa41534f5ae
+version: 1.0.0

@@ -103,3 +103,11 @@ def test_backoff_is_exponential_and_honours_hint() -> None:
     assert 384 <= d3 < 384 * 1.11
     assert source._backoff(1, hint=1000) >= 1000
     assert source._backoff(20) <= 3600 * 1.1
+
+
+def test_transient_backoff_is_short_and_bounded() -> None:
+    source = OpenSkySource(960)
+    assert 30 <= source._transient_backoff(1) < 34
+    assert 60 <= source._transient_backoff(2) < 67
+    # After MAX_TRANSIENT_RETRIES quick retries, fall back to the polling interval.
+    assert source._transient_backoff(10) >= 960
