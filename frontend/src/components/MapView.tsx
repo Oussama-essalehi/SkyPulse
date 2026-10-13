@@ -116,13 +116,23 @@ export function MapView(props: Props) {
       const selectedAircraft = selected ? store.aircraft.get(selected) : undefined;
       const selectedPos = selectedAircraft ? store.position(selectedAircraft, now) : null;
 
-      const alertPoints: AlertPoint[] = alerts.map((alert) => {
+      const alertPoints: AlertPoint[] = [];
+      for (const alert of alerts) {
         const a = store.aircraft.get(alert.icao24);
-        const position: [number, number] = a
-          ? store.position(a, now)
-          : [alert.longitude ?? 0, alert.latitude ?? 0];
-        return { position, severity: alert.severity, icao24: alert.icao24 };
-      });
+        // Live aircraft: follow it; otherwise the position stored with the alert, if any.
+        if (a)
+          alertPoints.push({
+            position: store.position(a, now),
+            severity: alert.severity,
+            icao24: alert.icao24,
+          });
+        else if (alert.longitude !== null && alert.latitude !== null)
+          alertPoints.push({
+            position: [alert.longitude, alert.latitude],
+            severity: alert.severity,
+            icao24: alert.icao24,
+          });
+      }
       const pulse = (time % 1600) / 1600;
 
       const layers = [

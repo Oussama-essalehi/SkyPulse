@@ -472,6 +472,23 @@ textarea {
   color: var(--accent);
 }
 
+.eta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 36, 0.8);
+}
+
+.eta-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
 .assistant form {
   display: flex;
   flex-direction: column;

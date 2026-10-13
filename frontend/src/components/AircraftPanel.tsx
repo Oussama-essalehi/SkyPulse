@@ -78,16 +78,49 @@ export function AircraftPanel({ aircraft, detail, error, onClose }: Props) {
       </dl>
       <section className="flight">
         <h3>Vol</h3>
-        <div className="route">
-          <span>{flight?.departure ?? "?"}</span>
-          <span className="arrow">→</span>
-          <span>{flight?.arrival ?? "?"}</span>
-        </div>
-        <p className="muted small">
-          {detail?.eta
-            ? `ETA ${eta(detail.eta.seconds)} (${detail.eta.method})`
-            : "Départ / arrivée reconstitués par le pipeline à partir de l'historique (disponible après accumulation de données)."}
-        </p>
+        {flight ? (
+          <>
+            <div className="route">
+              <span title={flight.departure_name ?? undefined}>{flight.departure ?? "?"}</span>
+              <span className="arrow">→</span>
+              <span title={flight.arrival_name ?? undefined}>{flight.arrival ?? "?"}</span>
+            </div>
+            <p className="muted small">
+              {flight.departure_name ?? "Départ inconnu"} →{" "}
+              {flight.arrival_name ?? "arrivée inconnue"}
+              {flight.departure_time
+                ? ` · parti à ${new Date(flight.departure_time * 1000).toISOString().slice(11, 16)} UTC`
+                : ""}
+            </p>
+            {flight.arrival && (
+              <p className="muted small">
+                Destination probable : route habituelle de ce callsign
+                {flight.route_flights
+                  ? ` (${flight.route_flights} vols, ${Math.round((flight.route_share ?? 0) * 100)} %)`
+                  : ""}
+                .
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="muted small">
+            Départ et arrivée sont reconstitués par le pipeline à partir de l'historique
+            (disponibles après quelques heures de données, profil complet).
+          </p>
+        )}
+        {detail?.eta && (
+          <div className="eta">
+            <span className="eta-value">{eta(detail.eta.seconds)}</span>
+            <span className="muted small">
+              arrivée vers{" "}
+              {new Date(detail.eta.arrival_estimate * 1000).toISOString().slice(11, 16)} UTC ·{" "}
+              {Math.round(detail.eta.remaining_km)} km ·{" "}
+              {detail.eta.method === "lightgbm"
+                ? `modèle LightGBM (MAE ${detail.eta.model_mae_min} min)`
+                : "estimation naïve distance / vitesse"}
+            </span>
+          </div>
+        )}
       </section>
       {error && <p className="error small">{error}</p>}
     </aside>
