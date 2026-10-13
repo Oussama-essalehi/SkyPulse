@@ -21,3 +21,12 @@
         else 'Oceans & other'
     end
 {%- endmacro %}
+
+{# Initial great-circle bearing from point 1 to point 2, degrees clockwise from north. #}
+{% macro bearing_deg(lat1, lon1, lat2, lon2) -%}
+    ((degrees(atan2(
+        sin(radians(({{ lon2 }}) - ({{ lon1 }}))) * cos(radians({{ lat2 }})),
+        cos(radians({{ lat1 }})) * sin(radians({{ lat2 }}))
+        - sin(radians({{ lat1 }})) * cos(radians({{ lat2 }})) * cos(radians(({{ lon2 }}) - ({{ lon1 }})))
+    )) + 360) % 360)
+{%- endmacro %}

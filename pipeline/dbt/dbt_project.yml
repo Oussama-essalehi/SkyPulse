@@ -32,6 +32,9 @@ models:
     intermediate:
       +schema: intermediate
       +materialized: table
+    ml:
+      +materialized: external
+      +format: parquet
     marts:
       # Marts are written as standalone Parquet files: Superset, the assistant
       # and the API read them through their own in-memory DuckDB connections,

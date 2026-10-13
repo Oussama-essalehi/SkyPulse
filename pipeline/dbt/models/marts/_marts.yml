@@ -85,3 +85,20 @@ models:
       - unique_combination:
           arguments:
             columns: [day, altitude_band_m]
+
+  - name: fct_callsign_routes
+    description: Usual arrival airport per (callsign, departure airport).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [callsign, departure_airport]
+    columns:
+      - name: usual_arrival_share
+        data_tests:
+          - value_between: {arguments: {min_value: 0, max_value: 1}}
+
+  - name: fct_diversions
+    description: Flights that landed somewhere else than the usual destination of their callsign.
+    columns:
+      - name: flight_id
+        data_tests: [unique, not_null]
