@@ -1,0 +1,27 @@
+version: 2
+
+sources:
+  - name: lake
+    description: Raw Parquet files written by the streaming sink (hive partitions date=/hour=).
+    meta:
+      external_location: "read_parquet('{{ env_var('SKYRADAR_LAKE_ROOT', 's3://skyradar-lake') }}/raw/{name}/*/*/*.parquet', hive_partitioning = true, union_by_name = true)"
+    tables:
+      - name: aircraft_states
+        description: One row per aircraft state vector received from the source (OpenSky / replay).
+        columns:
+          - name: icao24
+            description: ICAO 24-bit transponder address (hex).
+          - name: time_position
+            description: Unix time of the last position update.
+          - name: snapshot_time
+            description: Unix time of the source snapshot.
+      - name: alerts
+        description: Alert lifecycle events published by the anomaly detector.
+
+  - name: reference
+    description: Reference data downloaded by `make seed` (OurAirports, public domain).
+    meta:
+      external_location: "read_csv_auto('{{ env_var('SKYRADAR_REFERENCE_ROOT', '/data/reference') }}/{name}.csv', header = true)"
+    tables:
+      - name: airports
+        description: OurAirports airports.csv

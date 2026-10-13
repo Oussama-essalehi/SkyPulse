@@ -1,0 +1,24 @@
+# Dagster instance configuration (mounted as $DAGSTER_HOME/dagster.yaml).
+storage:
+  postgres:
+    postgres_db:
+      hostname: { env: DAGSTER_PG_HOST }
+      username: { env: POSTGRES_USER }
+      password: { env: POSTGRES_PASSWORD }
+      db_name: dagster
+      port: 5432
+
+# Every run goes through the daemon queue, one at a time: dbt is the only
+# writer of its DuckDB file and two concurrent `dbt build` would conflict.
+run_coordinator:
+  module: dagster._core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 1
+
+run_launcher:
+  module: dagster._core.launcher
+  class: DefaultRunLauncher
+
+telemetry:
+  enabled: false

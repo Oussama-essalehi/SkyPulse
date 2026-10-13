@@ -1,0 +1,33 @@
+# Secrets
+.env
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+# Data (never committed: downloaded or recorded)
+data/
+!data/.gitkeep
+*.duckdb
+*.duckdb.wal
+# dbt
+pipeline/dbt/target/
+pipeline/dbt/dbt_packages/
+pipeline/dbt/logs/
+# Dagster
+pipeline/dagster/.dagster_home/
+# Node
+node_modules/
+frontend/dist/
+# MLflow local runs
+mlruns/
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.tsbuildinfo

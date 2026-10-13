@@ -1,0 +1,21 @@
+version: 2
+
+models:
+  - name: int_flight_segments
+    description: Each position tagged with the reconstructed flight it belongs to.
+    columns:
+      - name: flight_id
+        description: "<icao24>-<epoch of the first position of the flight>"
+        data_tests: [not_null]
+      - name: step_km
+        description: Great-circle distance from the previous position of the same flight.
+        data_tests:
+          - value_between: {arguments: {min_value: 0, max_value: 2000}}
+  - name: int_flight_endpoints
+    description: Flight summary with the nearest airport at departure / arrival (when low enough).
+    columns:
+      - name: flight_id
+        data_tests: [unique, not_null]
+      - name: departure_match_km
+        data_tests:
+          - value_between: {arguments: {min_value: 0, max_value: 15}}

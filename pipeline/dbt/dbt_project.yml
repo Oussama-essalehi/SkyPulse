@@ -1,0 +1,40 @@
+name: skyradar
+version: "0.1.0"
+config-version: 2
+profile: skyradar
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+analysis-paths: ["analyses"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Lake / reference locations come from env vars (see macros/lake.sql):
+  # SKYRADAR_LAKE_ROOT (s3://skyradar-lake in Docker, a local folder in CI)
+  # and SKYRADAR_REFERENCE_ROOT (/data/reference).
+  # Flight segmentation: a gap longer than this starts a new flight (seconds).
+  flight_gap_seconds: 1800
+  # A flight endpoint is matched to an airport only below this altitude (m)...
+  endpoint_max_altitude_m: 1500
+  # ...and within this distance (km).
+  endpoint_max_distance_km: 15
+  # Incremental staging re-processes this many hours of partitions each run.
+  staging_lookback_hours: 3
+
+models:
+  skyradar:
+    +on_schema_change: append_new_columns
+    staging:
+      +schema: staging
+      +materialized: table
+    intermediate:
+      +schema: intermediate
+      +materialized: table
+    marts:
+      # Marts are written as standalone Parquet files: Superset, the assistant
+      # and the API read them through their own in-memory DuckDB connections,
+      # so there is never a second process opening the dbt database file.
+      +materialized: external
+      +format: parquet

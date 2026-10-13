@@ -1,0 +1,19 @@
+skyradar:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+  outputs:
+    dev:
+      type: duckdb
+      # Private to dbt: only dbt ever opens this file (single writer).
+      path: "{{ env_var('DBT_DUCKDB_PATH', 'target/skyradar.duckdb') }}"
+      threads: 4
+      external_root: "{{ env_var('SKYRADAR_MARTS_ROOT', 'target/marts') }}"
+      extensions:
+        - httpfs
+      secrets:
+        - type: s3
+          key_id: "{{ env_var('S3_ACCESS_KEY', 'skyradar') }}"
+          secret: "{{ env_var('S3_SECRET_KEY', 'skyradar-secret') }}"
+          endpoint: "{{ env_var('S3_ENDPOINT_HOST', 'localhost:8333') }}"
+          region: "{{ env_var('S3_REGION', 'us-east-1') }}"
+          url_style: path
+          use_ssl: "{{ env_var('S3_USE_SSL', 'false') }}"

@@ -1,0 +1,75 @@
+version: 2
+
+models:
+  - name: fct_flights
+    description: >
+      Reconstructed flights (ADS-B has no native origin/destination): one row per flight,
+      with the nearest airport at take-off / landing when it could be identified.
+    columns:
+      - name: flight_id
+        description: "<icao24>-<epoch of first position>"
+        data_tests: [unique, not_null]
+      - name: icao24
+        data_tests: [not_null]
+      - name: duration_min
+        description: Airborne duration in minutes.
+        data_tests:
+          - value_between: {arguments: {min_value: 0, max_value: 1440}}
+      - name: distance_km
+        description: Flown distance (sum of great-circle steps).
+      - name: max_altitude_m
+        data_tests:
+          - value_between: {arguments: {min_value: -500, max_value: 20000}}
+      - name: is_complete
+        description: Both departure and arrival airports identified.
+
+  - name: fct_traffic_hourly
+    description: Distinct aircraft per hour, geographic zone and country of registration.
+    columns:
+      - name: hour
+        data_tests: [not_null]
+      - name: zone
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Europe', 'North America', 'Central America & Caribbean', 'South America',
+                         'Middle East', 'Africa', 'Asia', 'Oceania', 'Arctic', 'Oceans & other']
+      - name: aircraft
+        data_tests: [not_null]
+
+  - name: fct_airport_activity
+    description: Departures and arrivals per airport and hour.
+    columns:
+      - name: airport_icao
+        data_tests: [not_null]
+      - name: movements
+        data_tests: [not_null]
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [airport_icao, hour]
+
+  - name: fct_routes
+    description: Departure -> arrival airport pairs ranked by number of flights.
+    columns:
+      - name: route
+        data_tests: [unique, not_null]
+      - name: flights
+        data_tests: [not_null]
+
+  - name: fct_alerts_history
+    description: History of anomaly alerts (one row per alert id).
+    columns:
+      - name: alert_id
+        data_tests: [unique, not_null]
+      - name: alert_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['squawk_7500', 'squawk_7600', 'squawk_7700', 'rapid_descent',
+                         'holding_pattern', 'signal_loss', 'diversion', 'trajectory_outlier']
+      - name: severity
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['info', 'warning', 'critical']
