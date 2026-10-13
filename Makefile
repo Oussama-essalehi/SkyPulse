@@ -67,7 +67,7 @@ test-lake: ## Build a deterministic local lake for dbt tests
 	$(RUN) python scripts/build_test_lake.py --root $(TEST_LAKE)
 
 # ------------------------------------------------------------------- dev
-.PHONY: install test lint format typecheck dbt-parse dbt-build smoke front-dev
+.PHONY: install test lint format typecheck dbt-parse dbt-build eval-assistant smoke front-dev
 install: ## Install Python (uv) and frontend (npm) dependencies + pre-commit hooks
 	$(UV) sync --all-packages
 	cd frontend && npm ci
@@ -98,6 +98,9 @@ dbt-parse: ## Compile the dbt manifest (needed by Dagster)
 dbt-build: test-lake ## dbt build (models + tests) on the test lake
 	mkdir -p pipeline/dbt/target/marts
 	$(DBT_ENV) $(UV) run --no-sync dbt build
+
+eval-assistant: dbt-build ## Evaluate the assistant on 20 questions (needs ANTHROPIC_API_KEY; DRY=1 to only check references)
+	SKYRADAR_MARTS_ROOT=$(CURDIR)/pipeline/dbt/target/marts $(RUN) python assistant/eval/run_eval.py $(if $(DRY),--dry-run,)
 
 smoke: ## End-to-end smoke test against a running stack (make up-demo first)
 	$(RUN) pytest -m integration tests -v
