@@ -25,7 +25,7 @@ from dagster_dbt import DbtCliResource, DbtProject, dbt_assets
 from skyradar_ml import eta, forecast, outliers
 from skyradar_ml.marts import read_mart
 from skyradar_ml.reconstruction import track_reconstruction_quality
-from skyradar_orchestration import alerts
+from skyradar_orchestration import alerts, compaction
 from skyradar_orchestration.quality import build_soda_checks
 
 DBT_PROJECT_DIR = Path(os.getenv("DBT_PROJECT_DIR", Path(__file__).parents[3] / "dbt"))
@@ -172,6 +172,28 @@ def diversion_alerts(context: AssetExecutionContext) -> MaterializeResult:
     return MaterializeResult(metadata=_meta({"diversions": found, "alerts_published": published}))
 
 
+@asset(
+    deps=[RAW_STATES, RAW_ALERTS],
+    group_name="maintenance",
+    kinds={"parquet", "s3"},
+    description="Merge the small Parquet files of closed lake partitions into one file each.",
+)
+def lake_compaction(context: AssetExecutionContext) -> MaterializeResult:
+    report = compaction.compact(min_age_hours=compaction.compaction_min_age_hours())
+    for line in report.details:
+        context.log.info(line)
+    return MaterializeResult(
+        metadata=_meta(
+            {
+                "partitions": report.partitions,
+                "files_before": report.files_before,
+                "files_after": report.files_after,
+                "rows": report.rows,
+            }
+        )
+    )
+
+
 dbt_hourly_job = define_asset_job(
     "dbt_hourly",
     selection=(
@@ -188,6 +210,12 @@ ml_daily_job = define_asset_job(
     description="Model training / evaluation tracked in MLflow (ETA, reconstruction quality).",
 )
 
+maintenance_job = define_asset_job(
+    "lake_maintenance",
+    selection=AssetSelection.groups("maintenance"),
+    description="Daily compaction of the raw lake.",
+)
+
 defs = Definitions(
     assets=[
         *raw_lake,
@@ -197,13 +225,19 @@ defs = Definitions(
         traffic_forecast,
         trajectory_outliers,
         diversion_alerts,
+        lake_compaction,
     ],
     asset_checks=soda_checks,
-    jobs=[dbt_hourly_job, ml_daily_job],
+    jobs=[dbt_hourly_job, ml_daily_job, maintenance_job],
     schedules=[
         ScheduleDefinition(
             job=dbt_hourly_job,
             cron_schedule="5 * * * *",
+            default_status=DefaultScheduleStatus.RUNNING,
+        ),
+        ScheduleDefinition(
+            job=maintenance_job,
+            cron_schedule="15 2 * * *",
             default_status=DefaultScheduleStatus.RUNNING,
         ),
         ScheduleDefinition(
