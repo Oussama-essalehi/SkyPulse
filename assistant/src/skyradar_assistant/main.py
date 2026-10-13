@@ -26,6 +26,7 @@ ALLOWED_TABLES = (
     "fct_airport_activity",
     "fct_routes",
     "fct_alerts_history",
+    "fct_altitude_profile",
 )
 QUERY_TIMEOUT_S = float(os.getenv("ASSISTANT_QUERY_TIMEOUT_SECONDS", "10"))
 

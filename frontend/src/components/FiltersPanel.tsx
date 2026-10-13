@@ -1,4 +1,5 @@
 import { DEFAULT_FILTERS } from "../lib/labels";
+import { MAX_ALTITUDE_FILTER } from "../lib/store";
 import type { Filters } from "../lib/types";
 
 interface Props {
@@ -47,7 +48,12 @@ export function FiltersPanel({ filters, countries, onChange }: Props) {
       </label>
       <label className="field">
         <span>
-          Altitude max : <strong>{filters.maxAlt.toLocaleString("fr-FR")} m</strong>
+          Altitude max :{" "}
+          <strong>
+            {filters.maxAlt >= MAX_ALTITUDE_FILTER
+              ? "illimitée"
+              : `${filters.maxAlt.toLocaleString("fr-FR")} m`}
+          </strong>
         </span>
         <input
           type="range"

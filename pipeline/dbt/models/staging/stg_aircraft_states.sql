@@ -15,9 +15,21 @@ with raw as (
     select * from {{ source('lake', 'aircraft_states') }}
     {% if is_incremental() %}
     where "date" >= (
-        select cast(max(partition_hour) - to_hours({{ var('staging_lookback_hours') }}) as date)
+        -- coalesce: the table may exist but be empty (first run on an empty lake)
+        select coalesce(
+            cast(max(partition_hour) - to_hours({{ var('staging_lookback_hours') }}) as date),
+            date '1970-01-01'
+        )
         from {{ this }}
     )
+      and make_timestamp(cast(epoch("date") as bigint) * 1000000) + to_hours(cast("hour" as integer))
+        >= (
+            select coalesce(
+                max(partition_hour) - to_hours({{ var('staging_lookback_hours') }}),
+                timestamp '1970-01-01'
+            )
+            from {{ this }}
+        )
     {% endif %}
     {% else %}
     -- Empty lake (first start): typed empty relation with the lake schema.

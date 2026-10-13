@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  python:
+    name: Python - lint, types, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - run: uv sync --all-packages
+      - name: Ruff
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Mypy
+        run: uv run mypy libs/common/src ingestion/src api/src streaming/src assistant/src ml/src
+      - name: dbt manifest (needed by the Dagster definitions test)
+        run: make dbt-parse
+      - name: Unit tests
+        run: uv run pytest -q
+
+  dbt:
+    name: dbt build on test data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - run: uv sync --all-packages
+      - name: dbt build on an empty lake (first start)
+        working-directory: pipeline/dbt
+        env:
+          DBT_PROFILES_DIR: .
+          SKYRADAR_LAKE_ROOT: ${{ runner.temp }}/empty_lake
+          SKYRADAR_REFERENCE_ROOT: ${{ github.workspace }}/data/test_lake/reference
+          SKYRADAR_MARTS_ROOT: target/marts
+          DBT_DUCKDB_PATH: target/ci.duckdb
+        run: |
+          mkdir -p "$SKYRADAR_LAKE_ROOT" target/marts
+          uv run python ../../scripts/build_test_lake.py --root ../../data/test_lake
+          uv run dbt build
+      - name: dbt build (incremental) once the lake has data
+        working-directory: pipeline/dbt
+        env:
+          DBT_PROFILES_DIR: .
+          SKYRADAR_LAKE_ROOT: ${{ github.workspace }}/data/test_lake
+          SKYRADAR_REFERENCE_ROOT: ${{ github.workspace }}/data/test_lake/reference
+          SKYRADAR_MARTS_ROOT: target/marts
+          DBT_DUCKDB_PATH: target/ci.duckdb
+        run: |
+          uv run dbt build
+          uv run python -c "import duckdb; n = duckdb.sql(\"select count(*) from 'target/marts/fct_flights.parquet'\").fetchone()[0]; print('flights:', n); assert n > 100"
+      - name: dbt docs
+        working-directory: pipeline/dbt
+        env:
+          DBT_PROFILES_DIR: .
+          SKYRADAR_LAKE_ROOT: ${{ github.workspace }}/data/test_lake
+          SKYRADAR_REFERENCE_ROOT: ${{ github.workspace }}/data/test_lake/reference
+          SKYRADAR_MARTS_ROOT: target/marts
+          DBT_DUCKDB_PATH: target/ci.duckdb
+        run: uv run dbt docs generate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dbt-docs
+          path: |
+            pipeline/dbt/target/index.html
+            pipeline/dbt/target/manifest.json
+            pipeline/dbt/target/catalog.json
+
+  frontend:
+    name: Frontend - lint, types, tests, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  images:
+    name: Docker images (full profile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose --profile full build
+
+  e2e:
+    name: End-to-end (replay -> Redpanda -> API -> WebSocket)
+    runs-on: ubuntu-latest
+    needs: [python, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - run: uv sync --all-packages
+      - run: cp .env.example .env
+      # No recording in CI: the ingestion service generates synthetic traffic.
+      - name: Start the demo stack in replay mode
+        run: SOURCE=replay REPLAY_SPEED=5 docker compose --profile demo up -d --build --wait
+      - name: Smoke tests
+        run: uv run pytest -m integration tests -v
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --profile demo logs --tail=200
+      - name: Tear down
+        if: always()
+        run: docker compose --profile demo down -v

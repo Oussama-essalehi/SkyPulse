@@ -1,0 +1,26 @@
+slice_name: Distribution des altitudes (positions en vol)
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  viz_type: echarts_timeseries_bar
+  x_axis: altitude_band_m
+  metrics:
+  - expressionType: SQL
+    sqlExpression: SUM(positions)
+    label: Positions
+  groupby: []
+  row_limit: 50
+  x_axis_sort: altitude_band_m
+  x_axis_sort_asc: true
+  x_axis_title: Altitude (m, tranches de 1000 m)
+  y_axis_format: ',d'
+  show_legend: false
+  time_range: No filter
+  datasource: 12__table
+query_context: null
+cache_timeout: null
+uuid: 6ad8b699-f0e0-4b91-a0d3-d48651707898
+version: 1.0.0
+dataset_uuid: a92831e7-836b-429e-abde-390caacbd96d

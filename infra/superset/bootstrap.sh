@@ -8,10 +8,14 @@ superset fab create-admin \
   --firstname Admin --lastname SkyRadar --email admin@skyradar.local || true
 superset init
 
-for bundle in /app/dashboards/*.zip; do
-  [ -e "$bundle" ] || continue
-  echo "Importing dashboards from $bundle"
-  superset import-dashboards -p "$bundle" -u "${SUPERSET_ADMIN_USER}" || echo "WARN: import failed: $bundle"
+# Each folder of /app/dashboards is an exported bundle (YAML, versioned in git).
+for dir in /app/dashboards/*/; do
+  [ -f "${dir}metadata.yaml" ] || continue
+  name=$(basename "$dir")
+  (cd /app/dashboards && python -m zipfile -c "/tmp/${name}.zip" "${name}/")
+  echo "Importing dashboard bundle ${name}"
+  superset import-dashboards -p "/tmp/${name}.zip" -u "${SUPERSET_ADMIN_USER}" \
+    || echo "WARN: dashboard import failed for ${name}"
 done
 
 exec /usr/bin/run-server.sh

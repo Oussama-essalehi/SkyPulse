@@ -1,7 +1,9 @@
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { IconLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
 import type { PickingInfo } from "@deck.gl/core";
-import { Map as MapLibreMap, NavigationControl } from "maplibre-gl";
+import { Map as MapLibreMap, NavigationControl, setWorkerUrl } from "maplibre-gl";
+// MapLibre v6 loads its tile worker from a separate ES module: let Vite bundle it.
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 
@@ -9,6 +11,8 @@ import { ALERT_COLORS, altitudeColor } from "../lib/colors";
 import { PLANE_ATLAS, PLANE_MAPPING } from "../lib/planeIcon";
 import type { AircraftStore, RenderBuffers } from "../lib/store";
 import type { Alert, Filters } from "../lib/types";
+
+setWorkerUrl(maplibreWorkerUrl);
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark";
 const FRAME_MS = 50; // ~20 fps is plenty for aircraft moving a few pixels per second

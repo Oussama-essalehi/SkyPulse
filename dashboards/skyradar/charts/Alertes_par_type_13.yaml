@@ -1,0 +1,25 @@
+slice_name: Alertes par type
+description: null
+certified_by: null
+certification_details: null
+viz_type: pie
+params:
+  viz_type: pie
+  groupby:
+  - alert_type
+  metric:
+    expressionType: SQL
+    sqlExpression: COUNT(*)
+    label: Alertes
+  donut: true
+  show_labels: true
+  label_type: key_percent
+  row_limit: 20
+  show_legend: true
+  legendOrientation: right
+  datasource: 11__table
+query_context: null
+cache_timeout: null
+uuid: 9517ec69-bdb4-42e1-a5c6-24f7ba7c2846
+version: 1.0.0
+dataset_uuid: a12e3128-f090-4a65-bd7a-eba2667fdd02

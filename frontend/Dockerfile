@@ -10,7 +10,9 @@ ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build
 
 FROM nginx:1.27-alpine
-ENV API_UPSTREAM=api:8000
+ENV API_UPSTREAM=api:8000 NGINX_RESOLVER=127.0.0.11
+# Only these variables are substituted (nginx $variables are left alone).
+ENV NGINX_ENVSUBST_FILTER="^(API_UPSTREAM|NGINX_RESOLVER)$"
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80

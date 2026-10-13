@@ -27,6 +27,8 @@ from skyradar_ingestion.sources.base import FlightDataSource, Snapshot
 log = structlog.get_logger(__name__)
 
 DEFAULT_API_URL = "https://opensky-network.org/api"
+# Failed calls (5xx, timeouts) are retried quickly at most this many times in a row.
+MAX_TRANSIENT_RETRIES = 3
 
 # Index of each field in an OpenSky state vector array.
 _FIELDS = (
@@ -185,10 +187,20 @@ class OpenSkySource(FlightDataSource):
         )
 
     def _backoff(self, attempt: int, hint: float | None = None) -> float:
+        """Quota exhausted (429): exponential from the polling interval, honouring the
+        server hint. Never shorter than the interval, so retries cannot overspend."""
         base = max(self._interval, 10.0)
         delay: float = min(self._max_backoff, base * 2.0 ** (attempt - 1))
         if hint is not None:
             delay = max(delay, hint)
+        return delay + random.uniform(0, 0.1 * delay)
+
+    def _transient_backoff(self, attempt: int) -> float:
+        """Network / 5xx errors: retry sooner (30 s, 60 s, ...) but never more often
+        than ``MAX_TRANSIENT_RETRIES`` times per polling interval."""
+        delay: float = min(self._interval, 30.0 * 2.0 ** (attempt - 1))
+        if attempt > MAX_TRANSIENT_RETRIES:
+            delay = self._interval
         return delay + random.uniform(0, 0.1 * delay)
 
     async def stream(self) -> AsyncIterator[Snapshot]:
@@ -208,7 +220,7 @@ class OpenSkySource(FlightDataSource):
                 continue
             except (httpx.HTTPError, TokenError, ValueError) as exc:
                 failures += 1
-                delay = self._backoff(failures)
+                delay = self._transient_backoff(failures)
                 log.warning(
                     "opensky_fetch_failed", error=str(exc), attempt=failures, sleep_s=round(delay)
                 )

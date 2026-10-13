@@ -20,6 +20,10 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 2000,
   },
+  // MapLibre creates its worker with { type: "module" }.
+  worker: {
+    format: "es",
+  },
   test: {
     environment: "node",
   },

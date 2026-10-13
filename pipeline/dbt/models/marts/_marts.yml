@@ -73,3 +73,15 @@ models:
           - accepted_values:
               arguments:
                 values: ['info', 'warning', 'critical']
+
+  - name: fct_altitude_profile
+    description: Daily distribution of airborne positions per 1000 m altitude band.
+    columns:
+      - name: altitude_band_m
+        data_tests:
+          - not_null
+          - value_between: {arguments: {min_value: 0, max_value: 20000}}
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [day, altitude_band_m]

@@ -2,7 +2,7 @@ FROM apache/superset:4.1.2
 USER root
 # DuckDB SQLAlchemy dialect: Superset queries the dbt marts (Parquet) through an
 # in-memory DuckDB, never the dbt database file.
-RUN pip install --no-cache-dir "duckdb>=1.1,<2" "duckdb-engine==0.17.0"
+RUN pip install --no-cache-dir "duckdb>=1.1,<2" "duckdb-engine==0.17.0" "psycopg2-binary>=2.9"
 COPY superset_config.py /app/pythonpath/superset_config.py
 COPY bootstrap.sh /app/docker/skyradar-bootstrap.sh
 RUN chmod +x /app/docker/skyradar-bootstrap.sh
