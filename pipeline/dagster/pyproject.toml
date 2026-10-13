@@ -15,6 +15,8 @@ dependencies = [
     "sqlalchemy>=2.0,<2.1",
     "dbt-core>=1.8",
     "dbt-duckdb>=1.8",
+    "soda-duckdb>=4.27",
+    "skyradar-common",
     "duckdb>=1.1",
 ]
 
