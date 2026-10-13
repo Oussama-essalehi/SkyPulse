@@ -25,6 +25,29 @@ class KafkaSettings(BaseSettings):
     # Raw positions are also in the lake; keep 24h in the broker for replays/catch-up.
     states_retention_ms: int = 24 * 3600 * 1000
     alerts_retention_ms: int = 7 * 24 * 3600 * 1000
+    # Managed Kafka (Redpanda Serverless, Confluent Cloud...): SASL_SSL + SCRAM/PLAIN.
+    security_protocol: str = "PLAINTEXT"
+    sasl_mechanism: str | None = None
+    sasl_username: str | None = None
+    sasl_password: str | None = None
+
+    def client_options(self) -> dict[str, Any]:
+        """Connection options shared by producers, consumers and the admin client."""
+        options: dict[str, Any] = {
+            "bootstrap_servers": self.bootstrap_servers,
+            "security_protocol": self.security_protocol,
+        }
+        if self.security_protocol in {"SSL", "SASL_SSL"}:
+            from aiokafka.helpers import create_ssl_context
+
+            options["ssl_context"] = create_ssl_context()
+        if self.sasl_mechanism:
+            options.update(
+                sasl_mechanism=self.sasl_mechanism,
+                sasl_plain_username=self.sasl_username,
+                sasl_plain_password=self.sasl_password,
+            )
+        return options
 
 
 async def _retry(
@@ -45,7 +68,7 @@ async def _retry(
 
 async def ensure_topics(settings: KafkaSettings) -> None:
     """Create the SkyRadar topics if they do not exist (idempotent)."""
-    admin = AIOKafkaAdminClient(bootstrap_servers=settings.bootstrap_servers)
+    admin = AIOKafkaAdminClient(**settings.client_options())
     await _retry("admin", admin.start)
     try:
         existing = set(await admin.list_topics())
@@ -82,7 +105,7 @@ async def ensure_topics(settings: KafkaSettings) -> None:
 
 async def start_producer(settings: KafkaSettings, **kwargs: Any) -> AIOKafkaProducer:
     producer = AIOKafkaProducer(
-        bootstrap_servers=settings.bootstrap_servers,
+        **settings.client_options(),
         linger_ms=50,
         compression_type="lz4",
         max_batch_size=256 * 1024,
@@ -100,7 +123,7 @@ async def start_consumer(
 ) -> AIOKafkaConsumer:
     consumer = AIOKafkaConsumer(
         *topics,
-        bootstrap_servers=settings.bootstrap_servers,
+        **settings.client_options(),
         group_id=group_id,
         **kwargs,
     )
