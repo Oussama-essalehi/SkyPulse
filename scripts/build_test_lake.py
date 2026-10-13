@@ -92,6 +92,17 @@ def build(root: Path, minutes: int, start_time: int) -> None:
             alert_offset += 1
         if offset and offset % 20_000 == 0:
             sink.flush()  # several files per partition, like the real sink
+    # One ADS-B glitch (a fix 60 degrees away, between two real fixes): the dbt models
+    # must drop it (int_flight_segments), otherwise the step_km test fails.
+    victim = next(s for s in states if not s.on_ground and s.velocity)
+    glitch = victim.model_copy(
+        update={
+            "longitude": (victim.longitude + 240) % 360 - 180,
+            "time_position": (victim.time_position or victim.last_contact) + 5,
+            "last_contact": victim.last_contact + 5,
+        }
+    )
+    sink.add(AIRCRAFT_STATES, 1, 0, glitch.to_bytes())
     sink.flush()
     replay.unlink()
     write_airports(root / "reference" / "airports.csv")
