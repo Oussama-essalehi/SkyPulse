@@ -1,0 +1,30 @@
+# Option B: API on Fly.io. From the repo root:
+#   fly deploy . --config deploy/fly/api.toml --dockerfile api/Dockerfile
+#   fly secrets set KAFKA_BOOTSTRAP_SERVERS=... KAFKA_SASL_USERNAME=... KAFKA_SASL_PASSWORD=...
+app = "skyradar-api"
+primary_region = "cdg"
+
+[env]
+  API_CORS_ORIGINS = "https://skyradar.pages.dev"
+  KAFKA_SECURITY_PROTOCOL = "SASL_SSL"
+  KAFKA_SASL_MECHANISM = "SCRAM-SHA-256"
+  LOG_FORMAT = "json"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Keep one machine up: it holds the live state and the WebSocket clients.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

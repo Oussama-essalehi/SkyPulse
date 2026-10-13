@@ -68,6 +68,27 @@ jobs:
         run: |
           uv run dbt build
           uv run python -c "import duckdb; n = duckdb.sql(\"select count(*) from 'target/marts/fct_flights.parquet'\").fetchone()[0]; print('flights:', n); assert n > 100"
+          uv run python -c "import duckdb; n = duckdb.sql(\"select count(*) from 'target/marts/fct_diversions.parquet'\").fetchone()[0]; print('diversions:', n); assert n == 1"
+      - name: ML on the test marts (ETA vs baseline, Isolation Forest, forecast smoke)
+        env:
+          SKYRADAR_MARTS_ROOT: pipeline/dbt/target/marts
+        run: |
+          uv run python - <<'PY'
+          from pathlib import Path
+          from skyradar_ml import eta, forecast, outliers
+          root = Path("pipeline/dbt/target/marts")
+          r = eta.train(root, min_flights=50)
+          print("eta", r.status, r.metrics)
+          assert r.status == "trained" and r.metrics["mae_min"] < r.metrics["baseline_mae_min"]
+          o = outliers.score(root)
+          print("outliers", o.status, o.n_outliers)
+          assert o.status == "scored"
+          print("forecast", forecast.run(root, min_hours=2, holdout=1).status)
+          PY
+      - name: Assistant eval - reference queries (no LLM call in CI)
+        env:
+          SKYRADAR_MARTS_ROOT: ${{ github.workspace }}/pipeline/dbt/target/marts
+        run: uv run python assistant/eval/run_eval.py --dry-run
       - name: dbt docs
         working-directory: pipeline/dbt
         env:
