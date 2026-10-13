@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import time
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass
 
-from skyradar_common.models import Alert, AlertStatus, AlertType, StateVector
-from skyradar_streaming.anomaly.rules import Finding, RuleConfig, evaluate
+from skyradar_common.models import Alert, AlertStatus, AlertType, SnapshotMeta, StateVector
+from skyradar_streaming.anomaly.rules import (
+    Finding,
+    RuleConfig,
+    coverage_cell,
+    evaluate,
+    signal_loss_rule,
+)
 
 
 @dataclass
@@ -28,6 +34,12 @@ class AnomalyDetector:
         self._heartbeat = heartbeat_seconds
         self._tracks: dict[str, deque[StateVector]] = {}
         self._active: dict[tuple[str, AlertType], _Active] = {}
+        # Signal-loss bookkeeping: snapshots in which each aircraft was seen, and the
+        # receiver coverage (aircraft per grid cell) of the most recent snapshots.
+        self._sightings: dict[str, int] = {}
+        self._last_snapshot: dict[str, int] = {}
+        self._coverage: dict[int, Counter[tuple[int, int]]] = {}
+        self._previous_snapshot: int | None = None
 
     @property
     def tracked(self) -> int:
@@ -40,6 +52,7 @@ class AnomalyDetector:
     def process(self, state: StateVector, now: float | None = None) -> list[Alert]:
         """Ingest one state; return alert events to publish (new, heartbeat, resolved)."""
         now = now or time.time()
+        self._record_sighting(state)
         track = self._tracks.setdefault(state.icao24, deque())
         if track and (state.time_position or state.last_contact) <= (
             track[-1].time_position or track[-1].last_contact
@@ -71,6 +84,44 @@ class AnomalyDetector:
             events.append(resolved)
         return events
 
+    def _record_sighting(self, state: StateVector) -> None:
+        if self._last_snapshot.get(state.icao24) != state.snapshot_time:
+            self._last_snapshot[state.icao24] = state.snapshot_time
+            self._sightings[state.icao24] = self._sightings.get(state.icao24, 0) + 1
+            cell = coverage_cell(state.latitude, state.longitude, self.config.signal_loss_cell_deg)
+            self._coverage.setdefault(state.snapshot_time, Counter())[cell] += 1
+
+    def on_snapshot(self, meta: SnapshotMeta, now: float | None = None) -> list[Alert]:
+        """Called once all states of a snapshot were processed: detects signal losses.
+
+        Only aircraft present in the previous snapshot and missing from this one are
+        evaluated, so each disappearance is reported once. Replays are skipped: when a
+        replay loops, every aircraft of the last snapshot "disappears".
+        """
+        now = now or time.time()
+        events: list[Alert] = []
+        cells = self._coverage.get(meta.snapshot_time)
+        previous = self._previous_snapshot
+        self._previous_snapshot = meta.snapshot_time
+        for old in [t for t in self._coverage if t < meta.snapshot_time - 3600]:
+            del self._coverage[old]
+        if not cells or previous is None or meta.source == "replay":
+            return events
+        for icao24, seen in self._last_snapshot.items():
+            if seen != previous or (icao24, AlertType.SIGNAL_LOSS) in self._active:
+                continue
+            track = self._tracks.get(icao24)
+            if not track:
+                continue
+            finding = signal_loss_rule(
+                track[-1], self._sightings.get(icao24, 0), meta.snapshot_time, cells, self.config
+            )
+            if finding is not None:
+                alert = self._make_alert(track[-1], finding, now)
+                self._active[(icao24, AlertType.SIGNAL_LOSS)] = _Active(alert, now)
+                events.append(alert)
+        return events
+
     def evict_stale(self, now_epoch: float, max_age_s: float = 1800) -> list[Alert]:
         """Forget aircraft not seen for ``max_age_s``; resolve their alerts."""
         events: list[Alert] = []
@@ -78,6 +129,8 @@ class AnomalyDetector:
             k for k, t in self._tracks.items() if now_epoch - t[-1].last_contact > max_age_s
         ]:
             del self._tracks[icao24]
+            self._sightings.pop(icao24, None)
+            self._last_snapshot.pop(icao24, None)
             for key in [k for k in self._active if k[0] == icao24]:
                 events.append(
                     self._active.pop(key).alert.model_copy(

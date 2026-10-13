@@ -13,8 +13,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from skyradar_common.kafka import KafkaSettings, ensure_topics, start_consumer, start_producer
 from skyradar_common.logging import configure_logging
-from skyradar_common.models import StateVector
-from skyradar_common.topics import AIRCRAFT_ALERTS, AIRCRAFT_STATES
+from skyradar_common.models import SnapshotMeta, StateVector
+from skyradar_common.topics import AIRCRAFT_ALERTS, AIRCRAFT_SNAPSHOTS, AIRCRAFT_STATES
 from skyradar_streaming.anomaly.detector import AnomalyDetector
 
 log = structlog.get_logger(__name__)
@@ -22,6 +22,7 @@ log = structlog.get_logger(__name__)
 ALERT_EVENTS = Counter("skyradar_anomaly_alert_events_total", "Alert events", ["type", "status"])
 TRACKED = Gauge("skyradar_anomaly_tracked_aircraft", "Aircraft with a sliding window")
 ACTIVE = Gauge("skyradar_anomaly_active_alerts", "Currently active alerts")
+SNAPSHOT_DELAY_S = 5.0
 
 
 class DetectorSettings(BaseSettings):
@@ -41,7 +42,7 @@ async def run_async() -> None:
     producer = await start_producer(kafka)
     consumer = await start_consumer(
         kafka,
-        [AIRCRAFT_STATES],
+        [AIRCRAFT_STATES, AIRCRAFT_SNAPSHOTS],
         group_id=settings.group_id,
         enable_auto_commit=True,
         auto_offset_reset="latest",
@@ -51,20 +52,31 @@ async def run_async() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
     last_evict = time.monotonic()
+    pending_snapshots: list[tuple[float, SnapshotMeta]] = []
     log.info("anomaly_detector_started")
     try:
         while not stop.is_set():
             batches = await consumer.getmany(timeout_ms=1000, max_records=20_000)
             events = []
-            for records in batches.values():
+            for tp, records in batches.items():
                 for record in records:
                     if record.value is None:
                         continue
                     try:
-                        state = StateVector.from_bytes(record.value)
+                        if tp.topic == AIRCRAFT_SNAPSHOTS:
+                            pending_snapshots.append(
+                                (time.monotonic(), SnapshotMeta.from_bytes(record.value))
+                            )
+                        else:
+                            events.extend(detector.process(StateVector.from_bytes(record.value)))
                     except ValidationError:
                         continue
-                    events.extend(detector.process(state))
+            # Snapshot metadata is published after its states, but the states are spread
+            # over several partitions: give the stragglers a few seconds before using it.
+            while (
+                pending_snapshots and time.monotonic() - pending_snapshots[0][0] > SNAPSHOT_DELAY_S
+            ):
+                events.extend(detector.on_snapshot(pending_snapshots.pop(0)[1]))
             if time.monotonic() - last_evict > 60:
                 events.extend(detector.evict_stale(time.time()))
                 last_evict = time.monotonic()
