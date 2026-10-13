@@ -1,0 +1,1 @@
+"""Parquet lake sink."""

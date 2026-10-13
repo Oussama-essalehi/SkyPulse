@@ -1,0 +1,49 @@
+version: 2
+
+models:
+  - name: stg_aircraft_states
+    description: >
+      Cleaned state vectors: typed timestamps (UTC), out-of-range values nulled,
+      duplicates from the at-least-once sink removed (one row per icao24 + position time).
+    columns:
+      - name: icao24
+        description: ICAO 24-bit address (lower-case hex).
+        data_tests: [not_null]
+      - name: position_ts
+        description: Time of the position fix (UTC).
+        data_tests: [not_null]
+      - name: latitude
+        data_tests:
+          - not_null
+          - value_between: {arguments: {min_value: -90, max_value: 90}}
+      - name: longitude
+        data_tests:
+          - not_null
+          - value_between: {arguments: {min_value: -180, max_value: 180}}
+      - name: altitude_m
+        description: Barometric altitude, geometric as fallback (m).
+        data_tests:
+          - value_between: {arguments: {min_value: -500, max_value: 20000}}
+      - name: velocity_ms
+        description: Ground speed (m/s).
+        data_tests:
+          - value_between: {arguments: {min_value: 0, max_value: 400}}
+      - name: partition_hour
+        description: Lake partition (date + hour) the row was read from.
+        data_tests: [not_null]
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [icao24, position_epoch]
+
+  - name: stg_airports
+    description: Large / medium airports and scheduled small airports (OurAirports).
+    columns:
+      - name: airport_ident
+        data_tests: [unique, not_null]
+      - name: latitude
+        data_tests:
+          - value_between: {arguments: {min_value: -90, max_value: 90}}
+      - name: longitude
+        data_tests:
+          - value_between: {arguments: {min_value: -180, max_value: 180}}

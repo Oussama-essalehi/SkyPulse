@@ -1,0 +1,301 @@
+# SkyRadar - local stack.
+#   make up-demo  -> profile "demo": live map only (Redpanda, ingestion, anomaly detector, API, frontend)
+#   make up       -> profile "full": + Parquet lake, Dagster/dbt, Superset, MLflow, assistant
+name: skyradar
+
+x-python-env: &python-env
+  LOG_FORMAT: ${LOG_FORMAT:-json}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+
+x-s3-env: &s3-env
+  S3_ENDPOINT_URL: http://object-store:8333
+  S3_ENDPOINT_HOST: object-store:8333
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-skyradar}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-skyradar-secret}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-skyradar-lake}
+
+x-pipeline-env: &pipeline-env
+  <<: [*python-env, *s3-env]
+  SKYRADAR_LAKE_ROOT: s3://${S3_BUCKET:-skyradar-lake}
+  SKYRADAR_REFERENCE_ROOT: /data/reference
+  SKYRADAR_MARTS_ROOT: /data/marts
+  DAGSTER_PG_HOST: postgres
+  POSTGRES_USER: ${POSTGRES_USER:-skyradar}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skyradar}
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+
+services:
+  # ------------------------------------------------------------------ streaming
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    profiles: [demo, full]
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=1G
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr=internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr=internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr=internal://0.0.0.0:8081,external://0.0.0.0:18081
+    ports:
+      - "19092:19092"
+    volumes:
+      - redpanda:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  redpanda-console:
+    image: redpandadata/console:v2.8.2
+    profiles: [full]
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8081:8080"
+    depends_on:
+      redpanda: { condition: service_healthy }
+
+  ingestion:
+    build: { context: ., dockerfile: ingestion/Dockerfile }
+    image: skyradar/ingestion:local
+    profiles: [demo, full]
+    restart: unless-stopped
+    environment:
+      <<: *python-env
+      SOURCE: ${SOURCE:-opensky}
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-auto}
+      OPENSKY_CLIENT_ID: ${OPENSKY_CLIENT_ID:-}
+      OPENSKY_CLIENT_SECRET: ${OPENSKY_CLIENT_SECRET:-}
+      OPENSKY_FEEDER: ${OPENSKY_FEEDER:-false}
+      OPENSKY_BBOX: ${OPENSKY_BBOX:-}
+      OPENSKY_QUOTA_MARGIN: ${OPENSKY_QUOTA_MARGIN:-0.10}
+      REPLAY_PATH: ${REPLAY_PATH:-/data/replay/replay.parquet}
+      REPLAY_SPEED: ${REPLAY_SPEED:-1}
+      REPLAY_LOOP: ${REPLAY_LOOP:-true}
+    volumes:
+      - ./data/replay:/data/replay:ro
+    ports:
+      - "9100:9100"
+    depends_on:
+      redpanda: { condition: service_healthy }
+
+  anomaly-detector:
+    build: { context: ., dockerfile: streaming/Dockerfile }
+    image: skyradar/streaming:local
+    profiles: [demo, full]
+    restart: unless-stopped
+    command: ["python", "-m", "skyradar_streaming.anomaly.main"]
+    environment:
+      <<: *python-env
+      METRICS_PORT: "9102"
+    depends_on:
+      redpanda: { condition: service_healthy }
+
+  api:
+    build: { context: ., dockerfile: api/Dockerfile }
+    image: skyradar/api:local
+    profiles: [demo, full]
+    restart: unless-stopped
+    environment:
+      <<: *python-env
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      ASSISTANT_URL: http://assistant:8001
+    ports:
+      - "8000:8000"
+    depends_on:
+      redpanda: { condition: service_healthy }
+
+  frontend:
+    build: { context: ./frontend }
+    image: skyradar/frontend:local
+    profiles: [demo, full]
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      api: { condition: service_healthy }
+
+  # ----------------------------------------------------------------- lakehouse
+  object-store:
+    # S3-compatible storage. MinIO no longer publishes community images, see docs/adr/0002.
+    image: chrislusf/seaweedfs:3.97
+    profiles: [full]
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        cat > /tmp/s3.json <<EOF
+        {"identities": [{"name": "skyradar",
+          "credentials": [{"accessKey": "$${S3_ACCESS_KEY}", "secretKey": "$${S3_SECRET_KEY}"}],
+          "actions": ["Admin", "Read", "List", "Tagging", "Write"]}]}
+        EOF
+        exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/tmp/s3.json \
+          -master.volumeSizeLimitMB=512 -volume.max=0 -filer
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-skyradar}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-skyradar-secret}
+    ports:
+      - "8333:8333"   # S3 API
+      - "8888:8888"   # filer UI: browse the lake
+    volumes:
+      - lake:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8888/ && wget -q -O /dev/null http://127.0.0.1:8333/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  s3-init:
+    image: skyradar/streaming:local
+    profiles: [full]
+    command: ["python", "-m", "skyradar_common.storage", "${S3_BUCKET:-skyradar-lake}", "skyradar-mlflow"]
+    environment:
+      <<: *s3-env
+    depends_on:
+      object-store: { condition: service_healthy }
+    healthcheck:
+      disable: true
+
+  parquet-sink:
+    image: skyradar/streaming:local
+    profiles: [full]
+    restart: unless-stopped
+    environment:
+      <<: [*python-env, *s3-env]
+      SINK_FLUSH_INTERVAL_SECONDS: ${SINK_FLUSH_INTERVAL_SECONDS:-300}
+      METRICS_PORT: "9101"
+    depends_on:
+      redpanda: { condition: service_healthy }
+      s3-init: { condition: service_completed_successfully }
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: [full]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-skyradar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skyradar}
+      POSTGRES_DB: skyradar
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d skyradar"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  dagster-webserver:
+    build: { context: ., dockerfile: pipeline/dagster/Dockerfile }
+    image: skyradar/dagster:local
+    profiles: [full]
+    restart: unless-stopped
+    environment: *pipeline-env
+    volumes: &dagster-volumes
+      - warehouse:/data/warehouse
+      - marts:/data/marts
+      - ./data/reference:/data/reference:ro
+    ports:
+      - "3001:3000"
+    depends_on: &dagster-deps
+      postgres: { condition: service_healthy }
+      s3-init: { condition: service_completed_successfully }
+
+  dagster-daemon:
+    image: skyradar/dagster:local
+    profiles: [full]
+    restart: unless-stopped
+    command: ["dagster-daemon", "run", "-w", "/opt/dagster/home/workspace.yaml"]
+    environment: *pipeline-env
+    volumes: *dagster-volumes
+    healthcheck:
+      test: ["CMD-SHELL", "dagster-daemon liveness-check || exit 1"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      <<: *dagster-deps
+      dagster-webserver: { condition: service_healthy }
+
+  pipeline-init:
+    # Queues a first dbt build at start-up (executed by the daemon, single dbt writer).
+    image: skyradar/dagster:local
+    profiles: [full]
+    command: ["dagster", "job", "launch", "-w", "/opt/dagster/home/workspace.yaml", "-j", "dbt_hourly"]
+    environment: *pipeline-env
+    healthcheck:
+      disable: true
+    depends_on:
+      dagster-daemon: { condition: service_healthy }
+
+  mlflow:
+    build: { context: ./infra/mlflow }
+    image: skyradar/mlflow:local
+    profiles: [full]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-skyradar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skyradar}
+      MLFLOW_ARTIFACT_BUCKET: skyradar-mlflow
+      MLFLOW_S3_ENDPOINT_URL: http://object-store:8333
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-skyradar}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-skyradar-secret}
+      AWS_DEFAULT_REGION: ${S3_REGION:-us-east-1}
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      s3-init: { condition: service_completed_successfully }
+
+  superset:
+    build: { context: ./infra/superset }
+    image: skyradar/superset:local
+    profiles: [full]
+    restart: unless-stopped
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-change-me-in-env-file-please-0123456789}
+      SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
+      POSTGRES_USER: ${POSTGRES_USER:-skyradar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skyradar}
+    ports:
+      - "8088:8088"
+    volumes:
+      - marts:/data/marts:ro
+      - ./dashboards:/app/dashboards:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  assistant:
+    build: { context: ., dockerfile: assistant/Dockerfile }
+    image: skyradar/assistant:local
+    profiles: [full]
+    restart: unless-stopped
+    environment:
+      <<: *python-env
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5-5}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      SKYRADAR_MARTS_ROOT: /data/marts
+      SKYRADAR_API_URL: http://api:8000
+    volumes:
+      - marts:/data/marts:ro
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  redpanda:
+  lake:
+  postgres:
+  warehouse:
+  marts:

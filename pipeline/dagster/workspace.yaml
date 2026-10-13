@@ -1,0 +1,5 @@
+load_from:
+  - python_module:
+      module_name: skyradar_orchestration.definitions
+      attribute: defs
+      location_name: skyradar
