@@ -21,7 +21,7 @@ Dagster.
 Intégration : chaque check nommé d'un contrat devient un **asset check Dagster**
 (`skyradar_orchestration/quality.py`) avec les diagnostics Soda en métadonnées. Les checks
 opérationnels (fraîcheur, volume) sont en sévérité WARN ; les checks d'exactitude en ERROR.
-Ils s'exécutent dans le job horaire, avec les 40 tests dbt (également exposés en asset checks).
+Ils s'exécutent dans le job horaire, avec les tests dbt (également exposés en asset checks).
 
 | Contrat | Checks |
 |---|---|

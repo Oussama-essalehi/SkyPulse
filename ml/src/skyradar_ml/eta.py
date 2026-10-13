@@ -12,6 +12,9 @@
 * Metrics (MAE in minutes, MAPE) of both the model and the baseline go to MLflow, the
   model to the MLflow registry (``skyradar-eta``) and, for low-latency serving, to
   ``<marts>/models/eta_model.txt`` + ``eta_model.json`` read by the API.
+* **Promotion gate**: a model that does not beat the baseline on the test set is logged
+  but not served; a previously served model is withdrawn and the API falls back to the
+  naive estimate.
 """
 
 from __future__ import annotations
@@ -54,6 +57,13 @@ class EtaResult:
     n_rows: int = 0
     metrics: dict[str, float] = field(default_factory=dict)
     model_path: str | None = None
+    # Served by the API only if it beat the baseline on the test set.
+    promoted: bool = False
+
+
+def should_promote(metrics: dict[str, float]) -> bool:
+    """Serve the model only if it beats the naive baseline on the test set."""
+    return metrics["mae_min"] < metrics["baseline_mae_min"]
 
 
 def naive_eta_seconds(remaining_km: np.ndarray, velocity_ms: np.ndarray) -> np.ndarray:
@@ -149,34 +159,44 @@ def train(
     metrics["mae_improvement_pct"] = 100 * (1 - metrics["mae_min"] / metrics["baseline_mae_min"])
     metrics["test_rows"] = float(len(test_df))
 
-    # Serving model: refit on every flight (the holdout only served the evaluation).
-    final = lgb.LGBMRegressor(**hyper)
-    final.fit(df[FEATURES], df["target_ratio"], categorical_feature=[CATEGORICAL_FEATURE])
     model_dir = root / "models"
-    model_dir.mkdir(parents=True, exist_ok=True)
-    tmp = model_dir / "eta_model.txt.tmp"
-    final.booster_.save_model(str(tmp))
-    os.replace(tmp, model_dir / "eta_model.txt")
-    importance = dict(
-        zip(FEATURES, final.booster_.feature_importance("gain").tolist(), strict=True)
-    )
-    metadata = {
-        "features": FEATURES,
-        "target": "ratio to naive ETA (remaining_km * 1000 / velocity_ms), clipped",
-        "ratio_clip": list(RATIO_CLIP),
-        "airport_codes": codes,
-        "metrics": metrics,
-        "n_flights": n_flights,
-        "n_rows": len(df),
-        "trained_at": time.time(),
-        "feature_importance_gain": importance,
-    }
-    (model_dir / "eta_model.json").write_text(json.dumps(metadata, indent=2))
+    promoted = should_promote(metrics)
+    metrics["promoted"] = float(promoted)
+    importance: dict[str, float] = {}
+    _log_model = None
+    if promoted:
+        # Serving model: refit on every flight (the holdout only served the evaluation).
+        final = lgb.LGBMRegressor(**hyper)
+        final.fit(df[FEATURES], df["target_ratio"], categorical_feature=[CATEGORICAL_FEATURE])
+        model_dir.mkdir(parents=True, exist_ok=True)
+        tmp = model_dir / "eta_model.txt.tmp"
+        final.booster_.save_model(str(tmp))
+        os.replace(tmp, model_dir / "eta_model.txt")
+        importance = dict(
+            zip(FEATURES, final.booster_.feature_importance("gain").tolist(), strict=True)
+        )
+        metadata = {
+            "features": FEATURES,
+            "target": "ratio to naive ETA (remaining_km * 1000 / velocity_ms), clipped",
+            "ratio_clip": list(RATIO_CLIP),
+            "airport_codes": codes,
+            "metrics": metrics,
+            "n_flights": n_flights,
+            "n_rows": len(df),
+            "trained_at": time.time(),
+            "feature_importance_gain": importance,
+        }
+        (model_dir / "eta_model.json").write_text(json.dumps(metadata, indent=2))
 
-    def _log_model() -> None:
-        import mlflow
+        def _log_model() -> None:
+            import mlflow
 
-        mlflow.lightgbm.log_model(final.booster_, name="model", registered_model_name=MODEL_NAME)
+            mlflow.lightgbm.log_model(
+                final.booster_, name="model", registered_model_name=MODEL_NAME
+            )
+    else:
+        for name in ("eta_model.txt", "eta_model.json"):
+            (model_dir / name).unlink(missing_ok=True)
 
     log_run(
         "eta-prediction",
@@ -215,10 +235,12 @@ def train(
     )
     return EtaResult(
         "trained",
+        reason="" if promoted else "not promoted: does not beat the naive baseline",
         n_flights=n_flights,
         n_rows=len(df),
         metrics=metrics,
-        model_path=str(model_dir / "eta_model.txt"),
+        model_path=str(model_dir / "eta_model.txt") if promoted else None,
+        promoted=promoted,
     )
 
 
