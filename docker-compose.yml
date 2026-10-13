@@ -288,7 +288,9 @@ services:
     environment:
       <<: *python-env
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5-5}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5-5}
+      ASSISTANT_EFFORT: ${ASSISTANT_EFFORT:-medium}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       SKYRADAR_MARTS_ROOT: /data/marts
       SKYRADAR_API_URL: http://api:8000
