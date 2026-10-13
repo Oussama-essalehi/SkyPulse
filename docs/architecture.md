@@ -20,10 +20,10 @@ flowchart LR
     S3[(SeaweedFS S3<br/>raw/ date=/hour=)]
     DBT[dbt-duckdb<br/>staging → intermediate → marts]
     MARTS[(marts Parquet)]
-    DAG[Dagster<br/>schedules · asset checks]
+    DAG[Dagster<br/>schedules · asset checks dbt + Soda]
     ML[ML · MLflow]
     SUP[Superset]
-    AST[Assistant<br/>text-to-SQL gardé]
+    AST[Assistant<br/>Claude / Ollama · MCP]
   end
   OS --> ING
   RP --> ING
@@ -33,7 +33,10 @@ flowchart LR
   K --> SINK --> S3 --> DBT --> MARTS
   DAG -. orchestre .-> DBT & ML
   MARTS --> SUP & AST & ML
+  ML -- eta_model.txt --> API
+  ML -- déroutements · outliers --> K
   API -. proxy .-> AST
+  AST -. état live .-> API
 ```
 
 ## Flux temps réel
@@ -60,15 +63,32 @@ flowchart LR
 2. **dbt** (orchestré par Dagster, toutes les heures à hh:05) :
    - `stg_aircraft_states` (incrémental, retraite les 3 dernières heures de partitions) :
      typage, bornes, dédoublonnage ;
-   - `int_flight_segments` : un nouveau vol commence après un trou de plus de 30 min ou au
-     décollage ;
+   - `int_flight_segments` : les positions aberrantes isolées (vitesse implicite > 600 m/s
+     vers les deux voisines) sont écartées ; un nouveau vol commence après un trou de plus
+     de 30 min, au décollage, ou après un saut impossible ;
    - `int_flight_endpoints` : aéroport le plus proche (grille de 0,5° puis haversine) si
      l'extrémité est au sol ou sous 1 500 m, à moins de 15 km ;
    - marts `fct_flights`, `fct_traffic_hourly`, `fct_airport_activity`, `fct_routes`,
-     `fct_alerts_history`, `fct_altitude_profile`, écrits en Parquet (ADR 0003).
-3. **Dagster** : le lake brut est déclaré en *external assets* ; les tests dbt deviennent des
-   *asset checks*, complétés par un check de fraîcheur ; l'asset ML
-   `flight_reconstruction_quality` est loggué dans MLflow.
+     `fct_alerts_history`, `fct_altitude_profile`, `fct_callsign_routes`, `fct_diversions`,
+     `dim_airports`, et features `ml_eta_features` / `ml_flight_features`, écrits en
+     Parquet (ADR 0003).
+3. **Dagster** (ADR 0007, 0008) :
+   - le lake brut est déclaré en *external assets* ; les tests dbt et les contrats Soda Core
+     deviennent des *asset checks* ;
+   - `dbt_hourly` (hh:05) : dbt, checks, puis scoring ML (`traffic_forecast`,
+     `trajectory_outliers`, `diversion_alerts`) ; les déroutements et vols atypiques
+     récents sont publiés sur `aircraft.alerts` ;
+   - `ml_daily` (03:30) : `eta_model` et `flight_reconstruction_quality`, loggués dans
+     MLflow ; le modèle ETA promu est écrit dans le volume des marts, que l'API recharge ;
+   - `lake_maintenance` (02:15) : compaction des partitions closes en un fichier par heure.
+
+## Assistant
+
+`POST /assistant/ask` (proxifié par l'API) → boucle d'outils : Claude via le *tool runner*
+du SDK Anthropic, ou un modèle Ollama. Outils : `run_sql` (SELECT DuckDB sur les marts,
+garde-fous sqlglot, `LIMIT` forcé, timeout, accès fichier désactivé), `get_live_stats`,
+`count_live_aircraft`, `get_active_alerts` (état en direct via l'API). Les mêmes outils sont
+exposés par un serveur MCP ([mcp.md](mcp.md)).
 
 ## Services et ports
 

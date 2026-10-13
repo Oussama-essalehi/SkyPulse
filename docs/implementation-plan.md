@@ -77,21 +77,26 @@ Flux historique et analytique :
   `generate_synthetic_replay.py`.
 - [x] Tests unitaires, smoke test d'intégration, CI GitHub Actions, README.
 
-## Étape 3 — Enrichissement (itérations suivantes)
+## Étape 3 — Enrichissement
 
-1. **Qualité des données** : checks Soda Core (fraîcheur, volume, téléportation)
-   exposés comme asset checks Dagster.
-2. **Reconstitution des vols** : dbt incrémental, clustering DBSCAN des fins de vol
-   sans aéroport proche, métrique de couverture départ/arrivée dans MLflow.
-3. **Anomalies** : perte de signal en vol, déroutement (destination habituelle du
-   callsign), Isolation Forest sur features de trajectoire (scoring Dagster).
-4. **ETA** : features + LightGBM vs baseline distance/vitesse (MAE, MAPE), seuil
-   d'historique, endpoint de scoring dans l'API.
-5. **Prévision de trafic** : Prophet/statsmodels par zone vs baseline saisonnière.
-6. **Assistant** : text-to-SQL Anthropic (ou Ollama), garde-fous sqlglot, outil
-   « état live », jeu d'évaluation (~20 questions), serveur MCP.
-7. **Dashboards** : 7 dashboards Superset demandés, dont la performance ETA.
-8. **Déploiement** : guides Fly.io / Render + Cloudflare Pages pour le profil `demo`.
+- [x] **Qualité des données** : contrats Soda Core (bornes, fraîcheur, volume, téléportation)
+  exposés comme asset checks Dagster ([ADR 0007](adr/0007-data-quality-tool.md)).
+- [x] **Reconstitution des vols** : dbt incrémental, filtrage des positions aberrantes,
+  métrique de couverture départ/arrivée dans MLflow. *Reporté* : clustering DBSCAN des fins
+  de vol sans aéroport proche.
+- [x] **Anomalies** : perte de signal en vol (streaming, calibrée sur données réelles),
+  déroutement (destination habituelle du callsign), Isolation Forest expliqué ; publiés
+  sur `aircraft.alerts` depuis Dagster.
+- [x] **ETA** : features dbt, LightGBM vs baseline distance/vitesse (MAE, MAPE), seuil
+  d'historique, barrière de promotion, servi par l'API ([ADR 0008](adr/0008-ml-models.md)).
+- [x] **Prévision de trafic** : Holt-Winters (statsmodels) par zone vs naïf saisonnier.
+- [x] **Assistant** : boucle d'outils Claude (ou Ollama), garde-fous sqlglot, outils
+  « état live », jeu d'évaluation de 20 questions, serveur MCP.
+- [~] **Dashboards** : *Trafic aérien* et *Modèles ML* (performance de l'ETA, prévision,
+  outliers, déroutements). *Reporté* : dashboards compagnies et ponctualité (demandent la
+  base aéronefs OpenSky).
+- [x] **Déploiement** : VM + Caddy, ou Cloudflare Pages + Fly.io + Kafka managé (SASL/SSL)
+  ([deployment.md](deployment.md)) ; compaction quotidienne du lake (un fichier par partition horaire).
 
 ## Dépendances entre briques
 
