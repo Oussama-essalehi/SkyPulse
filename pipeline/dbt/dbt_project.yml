@@ -16,6 +16,9 @@ vars:
   # and SKYRADAR_REFERENCE_ROOT (/data/reference).
   # Flight segmentation: a gap longer than this starts a new flight (seconds).
   flight_gap_seconds: 1800
+  # Above this implied speed between two fixes a position is a glitch (or another
+  # aircraft sharing the icao24): ~Mach 1.8, impossible for civil traffic.
+  max_implied_speed_ms: 600
   # A flight endpoint is matched to an airport only below this altitude (m)...
   endpoint_max_altitude_m: 1500
   # ...and within this distance (km).
