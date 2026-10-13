@@ -29,8 +29,9 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 \
     DAGSTER_HOME=/opt/dagster/home DBT_PROJECT_DIR=/opt/skyradar/dbt \
     DBT_PROFILES_DIR=/opt/skyradar/dbt DBT_DUCKDB_PATH=/data/warehouse/skyradar.duckdb \
-    SKYRADAR_MARTS_ROOT=/data/marts
+    SKYRADAR_MARTS_ROOT=/data/marts DATA_QUALITY_DIR=/opt/skyradar/data_quality/contracts
 COPY --chown=skyradar pipeline/dbt /opt/skyradar/dbt
+COPY --chown=skyradar data_quality /opt/skyradar/data_quality
 COPY --chown=skyradar pipeline/dagster/dagster.yaml pipeline/dagster/workspace.yaml /opt/dagster/home/
 USER skyradar
 # Pre-install DuckDB extensions (no download at run time) and compile the manifest.
