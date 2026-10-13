@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from skyradar_ml import eta, forecast, outliers
 from skyradar_ml.marts import read_mart, write_parquet_atomic
@@ -52,6 +53,7 @@ def test_eta_model_beats_naive_baseline_and_exports(tmp_path: Path) -> None:
     result = eta.train(tmp_path, min_flights=50, params={"n_estimators": 150})
     assert result.status == "trained"
     assert result.metrics["mae_min"] < result.metrics["baseline_mae_min"]
+    assert result.promoted
     meta = json.loads((tmp_path / "models" / "eta_model.json").read_text())
     assert meta["features"] == eta.FEATURES
     assert set(meta["airport_codes"]) == {"LFPG", "EGLL", "EDDF"}
@@ -65,6 +67,22 @@ def test_split_by_time_keeps_flights_whole() -> None:
     train, test = eta.split_by_time(df)
     assert not set(train["flight_id"]) & set(test["flight_id"])
     assert train["arrival_time"].max() < test["arrival_time"].min()
+
+
+def test_eta_model_not_promoted_when_worse_than_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_parquet_atomic(make_eta_features(), tmp_path / "ml_eta_features.parquet")
+    assert eta.train(tmp_path, min_flights=50, params={"n_estimators": 50}).promoted
+    assert (tmp_path / "models" / "eta_model.txt").exists()
+    # The next training does not beat the baseline: the served model is withdrawn.
+    monkeypatch.setattr(eta, "should_promote", lambda metrics: False)
+    result = eta.train(tmp_path, min_flights=50, params={"n_estimators": 50})
+    assert result.status == "trained"
+    assert not result.promoted
+    assert "baseline" in result.reason
+    assert not (tmp_path / "models" / "eta_model.txt").exists()
+    assert not (tmp_path / "models" / "eta_model.json").exists()
 
 
 def test_forecast_beats_naive_on_seasonal_series(tmp_path: Path) -> None:

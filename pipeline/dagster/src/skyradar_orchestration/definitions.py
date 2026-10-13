@@ -104,6 +104,7 @@ def eta_model(context: AssetExecutionContext) -> MaterializeResult:
             {
                 "status": result.status,
                 "reason": result.reason,
+                "promoted": result.promoted,
                 "n_flights": result.n_flights,
                 "n_rows": result.n_rows,
                 **result.metrics,
