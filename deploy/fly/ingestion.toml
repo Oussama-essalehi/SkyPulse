@@ -1,0 +1,26 @@
+# Option B: ingestion worker on Fly.io (no public service). From the repo root:
+#   fly deploy . --config deploy/fly/ingestion.toml --dockerfile ingestion/Dockerfile
+#   fly secrets set KAFKA_BOOTSTRAP_SERVERS=... KAFKA_SASL_USERNAME=... KAFKA_SASL_PASSWORD=... \
+#                   OPENSKY_CLIENT_ID=... OPENSKY_CLIENT_SECRET=...
+# Exactly ONE machine: two pollers would spend the OpenSky quota twice.
+app = "skyradar-ingestion"
+primary_region = "cdg"
+
+[env]
+  SOURCE = "opensky"
+  POLL_INTERVAL_SECONDS = "auto"
+  KAFKA_SECURITY_PROTOCOL = "SASL_SSL"
+  KAFKA_SASL_MECHANISM = "SCRAM-SHA-256"
+  LOG_FORMAT = "json"
+
+[checks.metrics]
+  type = "http"
+  port = 9100
+  path = "/metrics"
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "30s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
