@@ -1,0 +1,23 @@
+slice_name: "MAE de l'ETA - baseline na\xEFve (min)"
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  metric:
+    expressionType: SQL
+    sqlExpression: arg_max(baseline_value, trained_at)
+    label: MAE baseline (min)
+  adhoc_filters:
+  - expressionType: SQL
+    sqlExpression: model = 'eta' and metric = 'mae_min'
+    clause: WHERE
+  subheader: distance restante / vitesse sol
+  y_axis_format: .2f
+  datasource: 18__table
+query_context: null
+cache_timeout: null
+uuid: 557348c0-2b96-4aa5-8438-20306c105712
+version: 1.0.0
+dataset_uuid: d9ffd10f-3250-482b-a55d-751932e13ee3

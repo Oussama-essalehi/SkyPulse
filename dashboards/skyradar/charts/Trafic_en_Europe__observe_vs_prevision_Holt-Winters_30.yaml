@@ -1,0 +1,28 @@
+slice_name: "Trafic en Europe : observ\xE9 vs pr\xE9vision (Holt-Winters)"
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_line
+params:
+  viz_type: echarts_timeseries_line
+  x_axis: hour
+  time_grain_sqla: PT1H
+  metrics:
+  - expressionType: SQL
+    sqlExpression: SUM(value)
+    label: Avions en vol
+  groupby:
+  - kind
+  adhoc_filters:
+  - expressionType: SQL
+    sqlExpression: zone = 'Europe'
+    clause: WHERE
+  y_axis_format: ',d'
+  show_legend: true
+  time_range: No filter
+  datasource: 19__table
+query_context: null
+cache_timeout: null
+uuid: 85dbe17c-ded6-4cc2-bcd4-3dac33e7f156
+version: 1.0.0
+dataset_uuid: ecc833ce-8505-4209-b35a-034168285e3f

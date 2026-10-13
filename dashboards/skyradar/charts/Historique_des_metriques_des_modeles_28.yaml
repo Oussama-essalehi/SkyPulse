@@ -1,0 +1,28 @@
+slice_name: "Historique des m\xE9triques des mod\xE8les"
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  query_mode: raw
+  all_columns:
+  - trained_at
+  - model
+  - metric
+  - value
+  - baseline_value
+  - n_samples
+  adhoc_filters:
+  - expressionType: SQL
+    sqlExpression: model in ('eta', 'traffic_forecast')
+    clause: WHERE
+  order_by_cols:
+  - '["trained_at", false]'
+  row_limit: 20
+  datasource: 18__table
+query_context: null
+cache_timeout: null
+uuid: d8d531df-673a-491f-9903-bbcced4027b9
+version: 1.0.0
+dataset_uuid: d9ffd10f-3250-482b-a55d-751932e13ee3

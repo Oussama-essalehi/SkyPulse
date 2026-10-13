@@ -18,9 +18,9 @@ params:
   y_axis_format: ',d'
   show_legend: false
   time_range: No filter
-  datasource: 7__table
+  datasource: 11__table
 query_context: null
 cache_timeout: null
-uuid: ee6f6bed-b531-4412-ae76-b796ae0c199b
+uuid: 71774029-b25e-4376-8cdf-0c4fab5c2eeb
 version: 1.0.0
-dataset_uuid: 4eb394d0-f789-437a-abc5-25f35a969ce4
+dataset_uuid: 40278b8d-7a24-4828-81f6-343ee27a9b58

@@ -14,7 +14,7 @@ fetch_values_predicate: null
 extra: null
 normalize_columns: false
 always_filter_main_dttm: false
-uuid: 00f97b08-1984-410c-8141-ca98d21b429f
+uuid: e93ba3b2-3b7a-4888-a4fe-929a99e559c1
 metrics:
 - metric_name: count
   verbose_name: COUNT(*)
@@ -146,7 +146,7 @@ columns:
   description: null
   python_date_format: null
   extra: null
-- column_name: arrival_airport_name
+- column_name: departure_airport_name
   verbose_name: null
   is_dttm: false
   is_active: true
@@ -158,7 +158,7 @@ columns:
   description: null
   python_date_format: null
   extra: null
-- column_name: arrival_airport
+- column_name: departure_airport
   verbose_name: null
   is_dttm: false
   is_active: true
@@ -218,7 +218,7 @@ columns:
   description: null
   python_date_format: null
   extra: null
-- column_name: departure_airport_name
+- column_name: arrival_airport_name
   verbose_name: null
   is_dttm: false
   is_active: true
@@ -230,7 +230,7 @@ columns:
   description: null
   python_date_format: null
   extra: null
-- column_name: departure_airport
+- column_name: arrival_airport
   verbose_name: null
   is_dttm: false
   is_active: true
@@ -243,4 +243,4 @@ columns:
   python_date_format: null
   extra: null
 version: 1.0.0
-database_uuid: 95ff5c60-0208-4b55-8267-2aa41534f5ae
+database_uuid: e8263dca-b8b0-424d-803a-4c2294979d9d
