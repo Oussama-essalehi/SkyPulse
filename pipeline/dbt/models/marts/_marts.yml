@@ -102,3 +102,9 @@ models:
     columns:
       - name: flight_id
         data_tests: [unique, not_null]
+
+  - name: dim_airports
+    description: Airport reference (OurAirports), one row per ICAO code.
+    columns:
+      - name: airport_icao
+        data_tests: [unique, not_null]

@@ -2420,16 +2420,22 @@ name = "skyradar-api"
 version = "0.1.0"
 source = { editable = "api" }
 dependencies = [
+    { name = "duckdb" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "lightgbm" },
+    { name = "numpy" },
     { name = "skyradar-common" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "duckdb", specifier = ">=1.1" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "lightgbm", specifier = ">=4.5" },
+    { name = "numpy", specifier = ">=1.26" },
     { name = "skyradar-common", editable = "libs/common" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]

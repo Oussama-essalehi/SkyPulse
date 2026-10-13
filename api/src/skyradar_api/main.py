@@ -12,6 +12,7 @@ import contextlib
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -22,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from skyradar_api.config import ApiSettings
 from skyradar_api.consumer import LiveConsumer
+from skyradar_api.enrichment import Enrichment
 from skyradar_api.state import LiveState
 from skyradar_api.ws import Broadcaster
 from skyradar_common.kafka import KafkaSettings
@@ -40,6 +42,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         alert_ttl_seconds=settings.alert_ttl_seconds,
     )
     broadcaster = Broadcaster(state, interval=settings.ws_push_interval_seconds)
+    enrichment = Enrichment(root=Path(settings.marts_root))
     consumer = LiveConsumer(
         state,
         KafkaSettings(),
@@ -67,6 +70,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     )
     app.state.live = state
     app.state.broadcaster = broadcaster
+    app.state.enrichment = enrichment
     app.add_middleware(GZipMiddleware, minimum_size=2048)
     app.add_middleware(
         CORSMiddleware,
@@ -99,9 +103,11 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         detail = state.aircraft_detail(icao24)
         if detail is None:
             raise HTTPException(404, f"aircraft {icao24} is not currently tracked")
-        # Placeholders filled by the ML layer (reconstructed flight, ETA model).
-        detail.setdefault("flight", None)
-        detail.setdefault("eta", None)
+        # Analytics layer (optional): probable route from the marts, ETA model.
+        entry = state.aircraft[icao24.lower()]
+        flight = enrichment.flight(entry.state)
+        detail["flight"] = flight
+        detail["eta"] = enrichment.eta(entry.state, flight)
         return detail
 
     @app.get("/alerts")

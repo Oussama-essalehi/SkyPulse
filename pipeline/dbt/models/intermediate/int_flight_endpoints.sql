@@ -19,10 +19,12 @@ summary as (
         arg_min(longitude, position_epoch) as first_longitude,
         arg_min(altitude_m, position_epoch) as first_altitude_m,
         arg_min(on_ground, position_epoch) as first_on_ground,
+        arg_min(vertical_rate_ms, position_epoch) as first_vertical_rate_ms,
         arg_max(latitude, position_epoch) as last_latitude,
         arg_max(longitude, position_epoch) as last_longitude,
         arg_max(altitude_m, position_epoch) as last_altitude_m,
         arg_max(on_ground, position_epoch) as last_on_ground,
+        arg_max(vertical_rate_ms, position_epoch) as last_vertical_rate_ms,
         count(*) as n_positions,
         count(*) filter (where not on_ground) as n_airborne_positions,
         max(altitude_m) as max_altitude_m,
@@ -33,14 +35,19 @@ summary as (
 ),
 
 endpoints as (
+    -- A departure is on the ground or low and climbing; an arrival on the ground or low
+    -- and descending (a flight still climbing out must not "arrive" where it took off).
     select flight_id, 'departure' as endpoint, first_latitude as latitude,
            first_longitude as longitude,
-           (first_on_ground or coalesce(first_altitude_m, 0) <= {{ var('endpoint_max_altitude_m') }})
-               as is_low
+           (first_on_ground
+            or (coalesce(first_altitude_m, 0) <= {{ var('endpoint_max_altitude_m') }}
+                and coalesce(first_vertical_rate_ms, 0) >= -1)) as is_low
     from summary
     union all
     select flight_id, 'arrival', last_latitude, last_longitude,
-           (last_on_ground or coalesce(last_altitude_m, 0) <= {{ var('endpoint_max_altitude_m') }})
+           (last_on_ground
+            or (coalesce(last_altitude_m, 0) <= {{ var('endpoint_max_altitude_m') }}
+                and coalesce(last_vertical_rate_ms, 0) <= 1))
     from summary
 ),
 

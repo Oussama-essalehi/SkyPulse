@@ -90,12 +90,30 @@ export interface AircraftDetail {
   };
   trail: [number, number, number | null, number][];
   alerts: Alert[];
-  flight: {
-    departure?: string | null;
-    arrival?: string | null;
-    departure_time?: number | null;
-  } | null;
-  eta: { seconds: number; method: string; airport?: string } | null;
+  flight: FlightInfo | null;
+  eta: EtaInfo | null;
+}
+
+export interface FlightInfo {
+  departure: string | null;
+  departure_name: string | null;
+  departure_time: number | null;
+  departure_source: "reconstructed" | "usual route";
+  arrival: string | null;
+  arrival_name: string | null;
+  arrival_source: string | null;
+  route_flights: number | null;
+  route_share: number | null;
+}
+
+export interface EtaInfo {
+  airport: string;
+  remaining_km: number;
+  seconds: number;
+  arrival_estimate: number;
+  naive_seconds: number;
+  method: "lightgbm" | "naive";
+  model_mae_min: number | null;
 }
 
 export interface Filters {

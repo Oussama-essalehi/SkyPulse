@@ -20,6 +20,8 @@ class ApiSettings(BaseSettings):
     bootstrap_lookback_seconds: int = Field(1200, alias="API_BOOTSTRAP_LOOKBACK_SECONDS")
     alerts_lookback_seconds: int = Field(6 * 3600, alias="API_ALERTS_LOOKBACK_SECONDS")
     assistant_url: str | None = Field(None, alias="ASSISTANT_URL")
+    # Marts written by dbt / the ML layer (read-only). Absent in the demo profile.
+    marts_root: str = Field("/data/marts", alias="SKYRADAR_MARTS_ROOT")
     consume: bool = Field(True, alias="API_CONSUME")
 
     @property

@@ -8,6 +8,10 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "httpx>=0.27",
+    # ETA serving: the booster exported by the ML layer (no pandas needed).
+    "lightgbm>=4.5",
+    "numpy>=1.26",
+    "duckdb>=1.1",
 ]
 
 [build-system]

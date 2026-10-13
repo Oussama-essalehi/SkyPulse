@@ -108,6 +108,10 @@ services:
       <<: *python-env
       API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
       ASSISTANT_URL: http://assistant:8001
+      SKYRADAR_MARTS_ROOT: /data/marts
+    volumes:
+      # Routes and ETA model from the analytics layer (empty in the demo profile).
+      - marts:/data/marts:ro
     ports:
       - "8000:8000"
     depends_on:
