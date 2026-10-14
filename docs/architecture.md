@@ -65,6 +65,10 @@ flowchart LR
    un budget par requête et un plafond global. Sans route, un avion bas (< 3 500 m) à moins
    de 60 km qui descend vers l'aéroport est une arrivée, un avion qui monte en s'en
    éloignant un départ. Les 24 dernières heures viennent de `fct_flights`.
+6. **Météo d'aéroport** (`GET /airports/{icao}/weather`) : dernier METAR de l'aéroport
+   (aviationweather.gov, NOAA, sans clé), mis en cache 10 min par aéroport et décodé par
+   l'API (température, vent, visibilité, plafond, temps présent en français, catégorie
+   VFR / IFR). Affichée dans le filtre aéroport et le tableau ; `WEATHER_LOOKUP=off` la coupe.
 
 ## Flux analytique
 

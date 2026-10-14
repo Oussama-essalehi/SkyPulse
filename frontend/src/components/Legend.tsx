@@ -1,7 +1,7 @@
-import { PALETTES, rgbCss, type Theme } from "../lib/colors";
+import { PALETTE, rgbCss } from "../lib/colors";
 
-export function Legend({ theme }: { theme: Theme }) {
-  const { stops, ground } = PALETTES[theme];
+export function Legend() {
+  const { stops, ground } = PALETTE;
   const gradient = stops
     .map(([alt, color]) => `${rgbCss(color)} ${(alt / 13000) * 100}%`)
     .join(", ");

@@ -38,6 +38,7 @@ from skyradar_api.enrichment import Enrichment
 from skyradar_api.ratelimit import RateLimiter, client_ip, parse_rules
 from skyradar_api.routes import RouteLookup
 from skyradar_api.state import LiveState
+from skyradar_api.weather import AirportWeather
 from skyradar_api.ws import Broadcaster
 from skyradar_common.kafka import KafkaSettings
 from skyradar_common.logging import configure_logging
@@ -74,6 +75,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         "airport", parse_rules(settings.rate_airport), "Trop de requêtes : ralentissez."
     )
     boards = AirportBoard(state, enrichment, routes)
+    weather = AirportWeather()
     ws_clients: dict[str, int] = {}
     consumer = LiveConsumer(
         state,
@@ -95,6 +97,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
         await routes.aclose()
+        await weather.aclose()
 
     app = FastAPI(
         title="SkyRadar API",
@@ -197,13 +200,31 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         return await asyncio.to_thread(boards.airports)
 
     @app.get("/airports/{icao}/board")
-    async def airport_board(icao: str, request: Request) -> dict[str, Any]:
-        """Live arrivals, departures and aircraft on the ground, and the last 24 hours."""
+    async def airport_board(
+        icao: str, request: Request, limit: int = Query(40, ge=1, le=500)
+    ) -> dict[str, Any]:
+        """Live arrivals, departures and aircraft on the ground, and the last 24 hours.
+
+        ``limit`` caps each list (the airport filter of the map asks for all of them).
+        """
         airport_limit.hit(client_ip(request, settings.client_ip_header))
-        board = await boards.board(icao)
+        board = await boards.board(icao, limit)
         if board is None:
             raise HTTPException(404, f"unknown airport {icao}")
         return board
+
+    @app.get("/airports/{icao}/weather")
+    async def airport_weather(icao: str, request: Request) -> dict[str, Any]:
+        """Latest METAR of the airport, decoded (temperature, wind, visibility, clouds)."""
+        airport_limit.hit(client_ip(request, settings.client_ip_header))
+        enrichment.refresh()
+        if icao.upper() not in enrichment.airports:
+            raise HTTPException(404, f"unknown airport {icao}")
+        return {
+            "airport": icao.upper(),
+            "enabled": weather.enabled,
+            "weather": await weather.current(icao),
+        }
 
     @app.get("/alerts")
     async def alerts() -> list[dict[str, Any]]:

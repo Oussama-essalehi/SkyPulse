@@ -32,7 +32,7 @@ async function aircraftCount(page: Page): Promise<number> {
   return Number(text.replace(/\s/g, ""));
 }
 
-test("live map: aircraft, aircraft card, theme", async ({ page, request }) => {
+test("live map: aircraft, aircraft card", async ({ page, request }) => {
   const errors = trackErrors(page);
   await page.goto("/");
 
@@ -53,17 +53,46 @@ test("live map: aircraft, aircraft card, theme", async ({ page, request }) => {
   await card.getByRole("button", { name: "Fermer" }).click();
   await expect(card).toBeHidden();
 
-  // Theme: dark by default here, grey after the toggle, remembered after a reload.
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await page.getByRole("button", { name: "Passer au thème gris" }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "grey");
-  await page.reload();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "grey");
-  await expect(page.getByRole("button", { name: "Passer au thème sombre" })).toBeVisible();
-
   // Side panels open.
   await page.getByRole("button", { name: /Alertes/ }).click();
   await expect(page.getByRole("heading", { name: "Alertes actives" })).toBeVisible();
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+test("legend above the map, airport filter with its weather", async ({ page }) => {
+  const errors = trackErrors(page);
+  await page.goto("/");
+  await expect(page.locator(".status")).toContainText("En direct", { timeout: 30_000 });
+  await expect.poll(() => aircraftCount(page), { timeout: 60_000 }).toBeGreaterThan(10);
+
+  // The altitude legend stays above the map (aircraft are drawn below it).
+  const legendOnTop = await page.evaluate(() => {
+    const legend = document.querySelector(".legend")!.getBoundingClientRect();
+    const hit = document.elementFromPoint(legend.x + legend.width / 2, legend.y + 8);
+    return Boolean(hit?.closest(".legend"));
+  });
+  expect(legendOnTop).toBe(true);
+
+  // Airport filter: only the aircraft of LFPG, and its weather.
+  await page.getByRole("button", { name: "Filtres" }).click();
+  await page.getByRole("button", { name: "Aéroport" }).click();
+  await page.getByRole("searchbox", { name: "Choisir un aéroport" }).fill("LFPG");
+  await page.locator(".airport-filter-results button").first().click();
+  await expect(page.locator(".airport-filter")).toContainText(/\d+ avions? : arrivées/, {
+    timeout: 20_000,
+  });
+  // Weather: decoded METAR, or why there is none (CI runs without outbound calls).
+  await expect(
+    page
+      .locator(".airport-filter")
+      .getByText(/Météo|Pas de bulletin|Météo désactivée/)
+      .first(),
+  ).toBeVisible({ timeout: 20_000 });
+  expect(await aircraftCount(page)).toBeLessThan(500);
+  await page.getByRole("button", { name: "Réinitialiser" }).click();
+  await expect.poll(() => aircraftCount(page)).toBeGreaterThan(10);
+  await page.getByRole("button", { name: "Fermer" }).first().click();
 
   expect(errors, errors.join("\n")).toEqual([]);
 });
@@ -100,14 +129,4 @@ test("airport board: search, live board, aircraft and back", async ({ page, requ
   await expect(board).toContainText("LFPG");
 
   expect(errors, errors.join("\n")).toEqual([]);
-});
-
-test.describe("light system theme", () => {
-  test.use({ colorScheme: "light" });
-
-  test("a first visit follows the system: grey theme", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator("html")).toHaveAttribute("data-theme", "grey");
-    await expect(page.getByRole("button", { name: "Passer au thème sombre" })).toBeVisible();
-  });
 });

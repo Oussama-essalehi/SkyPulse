@@ -1,7 +1,7 @@
 import type { Airport, AirportColumns, AirportKind } from "./types";
 
 /** Zoom from which each kind of airport is drawn (large hubs first). */
-export const AIRPORT_MIN_ZOOM: Record<AirportKind, number> = { L: 3, M: 6.5, S: 8.5 };
+export const AIRPORT_MIN_ZOOM: Record<AirportKind, number> = { L: 4.5, M: 6.5, S: 8.5 };
 /** Zoom from which the code (IATA, else ICAO) is written next to the dot. */
 export const AIRPORT_LABEL_ZOOM: Record<AirportKind, number> = { L: 5.5, M: 8, S: 9.5 };
 
