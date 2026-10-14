@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: #05080d;
   --panel: rgba(8, 13, 22, 0.88);
   --panel-solid: #0a111c;
@@ -10,6 +11,17 @@
   --warning: #f59e0b;
   --info: #38bdf8;
   --ok: #22c55e;
+  --strong: #fff;
+  --on-accent: #001018;
+  --surface: rgba(15, 23, 36, 0.8);
+  --hover: #111c2c;
+  --code-bg: #02050a;
+  --error-text: #fca5a5;
+  --topbar-bg: linear-gradient(180deg, rgba(5, 8, 13, 0.96), rgba(5, 8, 13, 0.75));
+  --vignette: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+  --shadow: rgba(0, 0, 0, 0.5);
+  --banner-bg: rgba(60, 10, 14, 0.9);
+  --attrib-bg: rgba(5, 8, 13, 0.6);
   --radius: 10px;
   --topbar-h: 56px;
   font-family:
@@ -23,6 +35,33 @@
   background: var(--bg);
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Light grey theme (toggle in the top bar, remembered per browser). */
+:root[data-theme="grey"] {
+  color-scheme: light;
+  --bg: #d9dde3;
+  --panel: rgba(241, 243, 246, 0.92);
+  --panel-solid: #eef0f3;
+  --border: #c3cad4;
+  --text: #1f2933;
+  --muted: #5b6878;
+  --accent: #0e7490;
+  --critical: #dc2626;
+  --warning: #b45309;
+  --info: #0369a1;
+  --ok: #15803d;
+  --strong: #0f172a;
+  --on-accent: #fff;
+  --surface: rgba(226, 230, 235, 0.9);
+  --hover: #dde2e8;
+  --code-bg: #e4e8ed;
+  --error-text: #b91c1c;
+  --topbar-bg: linear-gradient(180deg, rgba(236, 239, 243, 0.97), rgba(236, 239, 243, 0.82));
+  --vignette: radial-gradient(ellipse at center, transparent 60%, rgba(60, 70, 85, 0.18) 100%);
+  --shadow: rgba(30, 41, 59, 0.18);
+  --banner-bg: rgba(254, 226, 226, 0.95);
+  --attrib-bg: rgba(236, 239, 243, 0.8);
 }
 
 * {
@@ -56,7 +95,7 @@ button {
   pointer-events: none;
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+  background: var(--vignette);
 }
 
 .topbar {
@@ -70,7 +109,7 @@ button {
   align-items: center;
   gap: 16px;
   padding: 8px 16px;
-  background: linear-gradient(180deg, rgba(5, 8, 13, 0.96), rgba(5, 8, 13, 0.75));
+  background: var(--topbar-bg);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(8px);
 }
@@ -124,7 +163,7 @@ button {
   background: var(--panel-solid);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 30px var(--shadow);
 }
 
 .search-results button {
@@ -140,7 +179,7 @@ button {
 }
 
 .search-results button:hover {
-  background: #111c2c;
+  background: var(--hover);
 }
 
 .search-results span {
@@ -159,7 +198,7 @@ button {
 .counter strong {
   font-size: 18px;
   font-variant-numeric: tabular-nums;
-  color: #fff;
+  color: var(--strong);
 }
 
 .counter span,
@@ -218,7 +257,7 @@ button {
   padding: 0 5px;
   border-radius: 9px;
   background: var(--info);
-  color: #001018;
+  color: var(--on-accent);
   font-size: 11px;
   font-weight: 700;
   line-height: 18px;
@@ -242,7 +281,7 @@ button {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   backdrop-filter: blur(10px);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 18px 40px var(--shadow);
 }
 
 .side-panel {
@@ -290,7 +329,7 @@ h3 {
 }
 
 .error {
-  color: #fca5a5;
+  color: var(--error-text);
 }
 
 .field {
@@ -353,7 +392,7 @@ textarea {
   border-radius: 8px;
   border: 1px solid var(--border);
   border-left: 3px solid var(--info);
-  background: rgba(15, 23, 36, 0.8);
+  background: var(--surface);
   text-align: left;
   margin-bottom: 8px;
 }
@@ -395,14 +434,14 @@ textarea {
   padding: 8px 14px;
   border-radius: 999px;
   border: 1px solid rgba(239, 68, 68, 0.6);
-  background: rgba(60, 10, 14, 0.9);
+  background: var(--banner-bg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .alert-banner .more {
-  color: #fca5a5;
+  color: var(--error-text);
 }
 
 .pulse {
@@ -449,7 +488,7 @@ textarea {
 .facts div {
   padding: 10px;
   border-radius: 8px;
-  background: rgba(15, 23, 36, 0.8);
+  background: var(--surface);
   border: 1px solid var(--border);
 }
 
@@ -486,7 +525,7 @@ textarea {
   padding: 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: rgba(15, 23, 36, 0.8);
+  background: var(--surface);
 }
 
 .eta-value {
@@ -507,7 +546,7 @@ textarea {
   border-radius: 8px;
   border: 0;
   background: var(--accent);
-  color: #001018;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
@@ -530,7 +569,7 @@ textarea {
 .answer pre {
   white-space: pre-wrap;
   font-size: 12px;
-  background: #02050a;
+  background: var(--code-bg);
   padding: 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -606,7 +645,7 @@ td {
 }
 
 .maplibregl-ctrl-attrib {
-  background: rgba(5, 8, 13, 0.6) !important;
+  background: var(--attrib-bg) !important;
 }
 
 /* ---- Mobile: panels become bottom sheets ---- */
@@ -655,4 +694,10 @@ td {
   .legend {
     display: none;
   }
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }

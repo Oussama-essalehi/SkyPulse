@@ -7,14 +7,14 @@ import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 
-import { ALERT_COLORS, altitudeColor } from "../lib/colors";
+import { ALERT_COLORS, altitudeColor, palette, type Theme } from "../lib/colors";
 import { PLANE_ATLAS, PLANE_MAPPING } from "../lib/planeIcon";
 import type { AircraftStore, RenderBuffers } from "../lib/store";
+import { MAP_THEMES } from "../lib/theme";
 import type { Alert, Filters } from "../lib/types";
 
 setWorkerUrl(maplibreWorkerUrl);
 
-const MAP_STYLE = "https://tiles.openfreemap.org/styles/dark";
 const FRAME_MS = 50; // ~20 fps is plenty for aircraft moving a few pixels per second
 
 export interface FlyTarget {
@@ -31,6 +31,7 @@ interface Props {
   alerts: Alert[];
   trail: [number, number, number | null, number][] | null;
   flyTo: FlyTarget | null;
+  theme: Theme;
 }
 
 interface AlertPoint {
@@ -39,12 +40,18 @@ interface AlertPoint {
   icao24: string;
 }
 
-/** Radar-style tweaks on top of the OpenFreeMap dark style. */
-function tintStyle(map: MapLibreMap): void {
+const TOOLTIP_STYLE: Record<Theme, Record<string, string>> = {
+  dark: { background: "rgba(8,13,22,.92)", color: "#e2e8f0", border: "1px solid #1e293b" },
+  grey: { background: "rgba(241,243,246,.96)", color: "#1f2933", border: "1px solid #c3cad4" },
+};
+
+/** Radar-style tint on top of the OpenFreeMap style of the theme. */
+function tintStyle(map: MapLibreMap, theme: Theme): void {
+  const { land, water } = MAP_THEMES[theme];
   for (const layer of map.getStyle().layers ?? []) {
-    if (layer.type === "background") map.setPaintProperty(layer.id, "background-color", "#070b12");
+    if (layer.type === "background") map.setPaintProperty(layer.id, "background-color", land);
     if (layer.type === "fill" && layer.id.includes("water"))
-      map.setPaintProperty(layer.id, "fill-color", "#03060a");
+      map.setPaintProperty(layer.id, "fill-color", water);
   }
 }
 
@@ -62,7 +69,7 @@ export function MapView(props: Props) {
     if (!container.current) return;
     const map = new MapLibreMap({
       container: container.current,
-      style: MAP_STYLE,
+      style: MAP_THEMES[propsRef.current.theme].style,
       center: [8, 46],
       zoom: 3.6,
       minZoom: 1.5,
@@ -72,7 +79,7 @@ export function MapView(props: Props) {
     });
     map.touchZoomRotate.disableRotation();
     map.addControl(new NavigationControl({ showCompass: false }), "bottom-right");
-    map.on("style.load", () => tintStyle(map));
+    map.on("style.load", () => tintStyle(map, propsRef.current.theme));
     mapRef.current = map;
 
     const overlay = new MapboxOverlay({
@@ -87,10 +94,8 @@ export function MapView(props: Props) {
         return {
           text: `${a.callsign ?? a.icao24} · ${alt}`,
           style: {
-            background: "rgba(8,13,22,.92)",
-            color: "#e2e8f0",
+            ...TOOLTIP_STYLE[propsRef.current.theme],
             fontSize: "12px",
-            border: "1px solid #1e293b",
             borderRadius: "6px",
           },
         };
@@ -141,7 +146,7 @@ export function MapView(props: Props) {
               id: "trail",
               data: [{ path: [...trail.map((p) => [p[0], p[1]]), selectedPos] }],
               getPath: (d: { path: number[][] }) => d.path as [number, number][],
-              getColor: [56, 189, 248, 200],
+              getColor: palette().trail,
               getWidth: 2,
               widthUnits: "pixels",
               jointRounded: true,
@@ -218,6 +223,16 @@ export function MapView(props: Props) {
       mapRef.current = null;
     };
   }, []);
+
+  // Theme switch: new basemap (deck.gl layers live on their own canvas and are kept).
+  const { theme } = props;
+  const appliedTheme = useRef(theme);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || appliedTheme.current === theme) return;
+    appliedTheme.current = theme;
+    map.setStyle(MAP_THEMES[theme].style);
+  }, [theme]);
 
   const { flyTo } = props;
   useEffect(() => {

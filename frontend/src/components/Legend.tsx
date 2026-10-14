@@ -1,12 +1,13 @@
-import { ALTITUDE_STOPS, GROUND_COLOR, rgbCss } from "../lib/colors";
+import { PALETTES, rgbCss, type Theme } from "../lib/colors";
 
-export function Legend() {
-  const gradient = ALTITUDE_STOPS.map(
-    ([alt, color]) => `${rgbCss(color)} ${(alt / 13000) * 100}%`,
-  ).join(", ");
+export function Legend({ theme }: { theme: Theme }) {
+  const { stops, ground } = PALETTES[theme];
+  const gradient = stops
+    .map(([alt, color]) => `${rgbCss(color)} ${(alt / 13000) * 100}%`)
+    .join(", ");
   return (
     <div className="legend" aria-label="Légende des altitudes">
-      <span className="legend-ground" style={{ background: rgbCss(GROUND_COLOR) }} title="Au sol" />
+      <span className="legend-ground" style={{ background: rgbCss(ground) }} title="Au sol" />
       <div className="legend-bar" style={{ background: `linear-gradient(90deg, ${gradient})` }} />
       <div className="legend-labels">
         <span>0</span>
