@@ -20,7 +20,18 @@ class ApiSettings(BaseSettings):
     bootstrap_lookback_seconds: int = Field(1200, alias="API_BOOTSTRAP_LOOKBACK_SECONDS")
     alerts_lookback_seconds: int = Field(6 * 3600, alias="API_ALERTS_LOOKBACK_SECONDS")
     assistant_url: str | None = Field(None, alias="ASSISTANT_URL")
+    # Marts written by dbt / the ML layer (read-only). Absent in the demo profile.
+    marts_root: str = Field("/data/marts", alias="SKYRADAR_MARTS_ROOT")
     consume: bool = Field(True, alias="API_CONSUME")
+    # Public deployment guards (see ratelimit.py); "off" disables a limit.
+    client_ip_header: str = Field("X-Real-IP", alias="API_CLIENT_IP_HEADER")
+    rate_assistant: str = Field("5/minute,40/day", alias="API_RATE_ASSISTANT")
+    # All clients together: caps the LLM bill of a public demo.
+    assistant_daily_budget: str = Field("300/day", alias="API_ASSISTANT_BUDGET")
+    rate_aircraft: str = Field("60/minute", alias="API_RATE_AIRCRAFT")
+    # Airport board: each request may trigger a few dozen route lookups.
+    rate_airport: str = Field("20/minute", alias="API_RATE_AIRPORT")
+    max_ws_per_client: int = Field(4, alias="API_MAX_WS_PER_CLIENT")
 
     @property
     def cors_origin_list(self) -> list[str]:

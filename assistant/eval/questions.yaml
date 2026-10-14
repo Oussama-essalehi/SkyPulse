@@ -1,0 +1,115 @@
+# Assistant evaluation set. Graded against the marts built from the deterministic test
+# lake (`make test-lake` + dbt), so expected answers are reproducible.
+#
+# kind:
+#   scalar  - reference query returns one number; correct if the assistant's result
+#             table or its answer contains it (relative tolerance `tol`, default 1 %).
+#   top     - reference query returns the acceptable values (ties included, via rank());
+#             correct if one of them appears in the assistant's result or answer.
+#   set     - every value returned by the reference query must appear.
+#   live    - "right now" question: correct if the expected live tool was used.
+questions:
+  - id: q01_total_flights
+    question: Combien de vols ont été reconstitués au total ?
+    kind: scalar
+    sql: select count(*) from fct_flights
+  - id: q02_complete_share
+    question: Quelle part des vols reconstitués a un départ et une arrivée identifiés ?
+    kind: scalar
+    tol: 0.02
+    percent: true
+    sql: select avg(case when is_complete then 1.0 else 0 end) from fct_flights
+  - id: q03_busiest_airport
+    question: Quel aéroport a enregistré le plus de mouvements (départs + arrivées) ?
+    kind: top
+    sql: |
+      select airport_icao from (select airport_icao, sum(movements) m from fct_airport_activity group by 1)
+      qualify rank() over (order by m desc) = 1
+  - id: q04_top_departures
+    question: Quels sont les 3 aéroports avec le plus de départs ?
+    kind: top
+    sql: |
+      select airport_icao from (select airport_icao, sum(departures) d from fct_airport_activity group by 1)
+      qualify rank() over (order by d desc) = 1
+  - id: q05_top_route
+    question: Quelle est la route la plus fréquente ?
+    kind: top
+    sql: select route from fct_routes qualify rank() over (order by flights desc) = 1
+  - id: q06_squawk_7700
+    question: Combien d'alertes squawk 7700 ont été enregistrées ?
+    kind: scalar
+    sql: select count(*) from fct_alerts_history where alert_type = 'squawk_7700'
+  - id: q07_alert_types
+    question: Quels types d'alertes ont été détectés ?
+    kind: set
+    sql: select distinct alert_type from fct_alerts_history
+  - id: q08_top_country
+    question: Quel pays d'immatriculation compte le plus d'avions-heures dans l'historique ?
+    kind: top
+    sql: |
+      select origin_country from (select origin_country, sum(aircraft) a from fct_traffic_hourly group by 1)
+      qualify rank() over (order by a desc) = 1
+  - id: q09_long_flights
+    question: Combien de vols reconstitués ont duré plus de 2 heures ?
+    kind: scalar
+    sql: select count(*) from fct_flights where duration_min > 120
+  - id: q10_avg_duration_complete
+    question: Quelle est la durée moyenne, en minutes, des vols complets ?
+    kind: scalar
+    tol: 0.02
+    sql: select avg(duration_min) from fct_flights where is_complete
+  - id: q11_longest_distance
+    question: Quel callsign a parcouru la plus grande distance sur un vol ?
+    kind: top
+    sql: select callsign from fct_flights qualify rank() over (order by distance_km desc) = 1
+  - id: q12_max_altitude
+    question: Quelle est l'altitude maximale observée, en mètres ?
+    kind: scalar
+    tol: 0.01
+    sql: select max(max_altitude_m) from fct_flights
+  - id: q13_diversions_count
+    question: Combien de déroutements ont été détectés ?
+    kind: scalar
+    sql: select count(*) from fct_diversions
+  - id: q14_diversion_detail
+    question: Quel vol a été dérouté, et sur quel aéroport a-t-il atterri ?
+    kind: set
+    sql: select callsign from fct_diversions union all select arrival_airport from fct_diversions
+  - id: q15_departure_airports
+    question: Combien d'aéroports différents ont vu au moins un départ ?
+    kind: scalar
+    sql: select count(distinct departure_airport) from fct_flights where departure_airport is not null
+  - id: q16_busiest_zone
+    question: Quelle zone géographique compte le plus d'avions en vol sur l'ensemble de l'historique ?
+    kind: top
+    sql: |
+      select zone from (select zone, sum(airborne_aircraft) a from fct_traffic_hourly group by 1)
+      qualify rank() over (order by a desc) = 1
+  - id: q17_route_distance
+    question: Quelle est la distance moyenne, en kilomètres, de la route LFPG-LFLL ?
+    kind: scalar
+    tol: 0.02
+    sql: select avg_distance_km from fct_routes where route = 'LFPG-LFLL'
+  - id: q18_french_flights
+    question: Combien de vols ont été effectués par des avions immatriculés en France ?
+    kind: scalar
+    sql: select count(*) from fct_flights where origin_country = 'France'
+  - id: q19_live_france
+    question: Combien d'avions survolent la France en ce moment ?
+    kind: live
+    tool: count_live_aircraft
+  - id: q20_live_alerts
+    question: Y a-t-il des alertes actives en ce moment ?
+    kind: live
+    tool: get_active_alerts
+  - id: q21_top_airline
+    question: Quelle compagnie a effectué le plus de vols ?
+    kind: top
+    sql: |
+      select airline_name from (select airline_name, count(*) n from fct_flights
+        where airline_name is not null group by 1)
+      qualify rank() over (order by n desc) = 1
+  - id: q22_heavy_aircraft
+    question: Combien d'avions gros porteurs (catégorie de sillage H ou J) ont été observés ?
+    kind: scalar
+    sql: select count(*) from dim_aircraft where wake_category in ('H', 'J')

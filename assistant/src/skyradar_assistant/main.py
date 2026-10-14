@@ -1,9 +1,10 @@
-"""Assistant service (skeleton).
+"""Assistant service.
 
-Implemented: guardrails (``guardrails.py``), schema discovery over the marts and
-safe read-only execution. The LLM loop (Anthropic / Ollama, live-state tool) is
-added in the enrichment step; until then ``/ask`` answers 501, or 503 when no
-LLM is configured, which the API and the frontend surface as "assistant disabled".
+``/ask`` runs the agent (``agent.py``: Claude with the Anthropic Tool Runner, or a local
+model through Ollama) whose SQL tool goes through ``run_safe_query``: guardrails
+(``guardrails.py``) then a sandboxed, read-only DuckDB connection with a timeout.
+Without ANTHROPIC_API_KEY / OLLAMA_BASE_URL, ``/ask`` answers 503 and the frontend shows
+"assistant disabled".
 """
 
 from __future__ import annotations
@@ -14,10 +15,17 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+import structlog
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from skyradar_assistant.agent import Toolbox, ask_claude
 from skyradar_assistant.guardrails import UnsafeQueryError, validate_sql
+from skyradar_assistant.ollama import ask_ollama
+from skyradar_common.logging import configure_logging
+
+configure_logging("assistant")
+log = structlog.get_logger(__name__)
 
 MARTS_ROOT = Path(os.getenv("SKYRADAR_MARTS_ROOT", "/data/marts"))
 ALLOWED_TABLES = (
@@ -27,6 +35,17 @@ ALLOWED_TABLES = (
     "fct_routes",
     "fct_alerts_history",
     "fct_altitude_profile",
+    "fct_callsign_routes",
+    "fct_diversions",
+    "dim_airports",
+    "dim_aircraft",
+    "dim_aircraft_registry",
+    "dim_airlines",
+    "fct_airline_activity",
+    "ml_traffic_forecast",
+    "ml_flight_anomaly_scores",
+    "ml_model_metrics",
+    "ml_endpoint_clusters",
 )
 QUERY_TIMEOUT_S = float(os.getenv("ASSISTANT_QUERY_TIMEOUT_SECONDS", "10"))
 
@@ -99,9 +118,17 @@ def schema() -> dict[str, list[dict[str, str]]]:
 
 @app.post("/ask")
 def ask(request: AskRequest) -> dict[str, Any]:
-    if llm_provider() is None:
+    provider = llm_provider()
+    if provider is None:
         raise HTTPException(503, "assistant disabled: set ANTHROPIC_API_KEY or OLLAMA_BASE_URL")
-    raise HTTPException(501, "text-to-SQL loop not implemented yet (enrichment step)")
+    toolbox = Toolbox(run_safe_query)
+    try:
+        if provider == "anthropic":
+            return ask_claude(request.question, toolbox, schema())
+        return ask_ollama(request.question, toolbox, schema())
+    except Exception as exc:
+        log.warning("assistant_failed", provider=provider, error=str(exc))
+        raise HTTPException(502, f"assistant error ({provider}): {exc}") from exc
 
 
 @app.post("/sql")

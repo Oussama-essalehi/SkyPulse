@@ -1,4 +1,4 @@
-import { altitudeColor } from "./colors";
+import { altitudeColor, palette } from "./colors";
 import { blendWeight, deadReckon, haversineKm } from "./geo";
 import type { Aircraft, Columns, Filters, SnapshotMessage } from "./types";
 
@@ -133,7 +133,8 @@ export class AircraftStore {
       buf.positions[2 * k + 1] = lat;
       // deck.gl IconLayer angles are counter-clockwise, tracks are clockwise.
       buf.angles[k] = -(a.track ?? 0);
-      const [r, g, b] = a.icao24 === selected ? [255, 255, 255] : altitudeColor(a.alt, a.onGround);
+      const [r, g, b] =
+        a.icao24 === selected ? palette().selected : altitudeColor(a.alt, a.onGround);
       buf.colors[4 * k] = r;
       buf.colors[4 * k + 1] = g;
       buf.colors[4 * k + 2] = b;

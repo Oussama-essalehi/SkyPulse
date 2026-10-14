@@ -1,0 +1,27 @@
+slice_name: Trafic mondial heure par heure (par zone)
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_area
+params:
+  viz_type: echarts_area
+  x_axis: hour
+  time_grain_sqla: PT1H
+  metrics:
+  - expressionType: SQL
+    sqlExpression: SUM(airborne_aircraft)
+    label: Avions en vol
+  groupby:
+  - zone
+  stack: Stack
+  row_limit: 50000
+  rich_tooltip: true
+  show_legend: true
+  y_axis_format: ',d'
+  time_range: No filter
+  datasource: 11__table
+query_context: null
+cache_timeout: null
+uuid: 3ae8fe3b-48af-4c57-b7ea-268bd914f1ec
+version: 1.0.0
+dataset_uuid: 4d11a88e-f3ee-4ff0-9230-c545088e3e1b

@@ -1,0 +1,19 @@
+slice_name: "Alertes d\xE9tect\xE9es"
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  metric:
+    expressionType: SQL
+    sqlExpression: COUNT(*)
+    label: Alertes
+  y_axis_format: ',d'
+  subheader: "squawk, descente rapide, attente\u2026"
+  datasource: 15__table
+query_context: null
+cache_timeout: null
+uuid: 24c3bbc7-c1a7-478c-9b08-a2ac759b0e51
+version: 1.0.0
+dataset_uuid: 0bc3da78-5907-415d-a59b-11adc2f2c335

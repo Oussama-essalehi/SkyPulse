@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import itertools
 import math
-from collections.abc import Sequence
+from collections import Counter
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -29,6 +30,19 @@ class RuleConfig:
     confinement_max_radius_m: float = 15_000.0
     confinement_min_path_ratio: float = 3.0
     min_airborne_altitude_m: float = 300.0
+    # Cruise only: below ~FL250 an aircraft is often descending towards an airport,
+    # where low-altitude receiver coverage is patchy.
+    signal_loss_min_altitude_m: float = 7_500.0
+    signal_loss_min_vertical_rate_ms: float = -5.0  # descending aircraft may simply land
+    signal_loss_min_sightings: int = 2
+    # Missing from this many consecutive snapshots: ~1 in 5 aircraft absent from one
+    # snapshot is back in the next one (measured on real OpenSky data).
+    signal_loss_confirm_snapshots: int = 2
+    signal_loss_cell_deg: float = 2.0
+    signal_loss_min_neighbours: int = 5
+    # Beyond this, the projected position is too uncertain (and the aircraft may well
+    # have landed): with anonymous polling (16 min) the rule is effectively disabled.
+    signal_loss_max_extrapolation_s: float = 600.0
 
 
 @dataclass(frozen=True)
@@ -173,3 +187,76 @@ def evaluate(track: Sequence[StateVector], cfg: RuleConfig) -> list[Finding]:
     latest = track[-1]
     findings = [squawk_rule(latest), rapid_descent_rule(latest, cfg), holding_rule(track, cfg)]
     return [f for f in findings if f is not None]
+
+
+def coverage_cell(lat: float, lon: float, size_deg: float) -> tuple[int, int]:
+    return (math.floor(lat / size_deg), math.floor(lon / size_deg))
+
+
+def coverage_map(states: Iterable[StateVector], size_deg: float) -> Counter[tuple[int, int]]:
+    """Number of aircraft received per grid cell in one snapshot (receiver coverage proxy)."""
+    return Counter(coverage_cell(s.latitude, s.longitude, size_deg) for s in states)
+
+
+def neighbourhood_count(
+    cells: Counter[tuple[int, int]], lat: float, lon: float, size_deg: float
+) -> int:
+    y, x = coverage_cell(lat, lon, size_deg)
+    return sum(cells.get((y + dy, x + dx), 0) for dy in (-1, 0, 1) for dx in (-1, 0, 1))
+
+
+def project(state: StateVector, elapsed_s: float) -> tuple[float, float]:
+    """Dead-reckoned position after ``elapsed_s`` seconds at constant speed and track."""
+    if not state.velocity or state.true_track is None or elapsed_s <= 0:
+        return state.latitude, state.longitude
+    d = state.velocity * elapsed_s / EARTH_RADIUS_M
+    b = math.radians(state.true_track)
+    p1, l1 = math.radians(state.latitude), math.radians(state.longitude)
+    p2 = math.asin(math.sin(p1) * math.cos(d) + math.cos(p1) * math.sin(d) * math.cos(b))
+    l2 = l1 + math.atan2(
+        math.sin(b) * math.sin(d) * math.cos(p1), math.cos(d) - math.sin(p1) * math.sin(p2)
+    )
+    return math.degrees(p2), (math.degrees(l2) + 540) % 360 - 180
+
+
+def signal_loss_rule(
+    last: StateVector,
+    sightings: int,
+    snapshot_time: int,
+    cells: Counter[tuple[int, int]],
+    cfg: RuleConfig,
+) -> Finding | None:
+    """A cruising aircraft disappeared although the area it should now be flying over is
+    still covered by receivers (other aircraft there are still received).
+
+    ADS-B coverage has holes (oceans, deserts): an aircraft leaving coverage is normal.
+    Projecting the last fix to the snapshot time and requiring live neighbours around
+    the projected position keeps those cases out.
+    """
+    alt = last.altitude
+    if last.on_ground or alt is None or alt < cfg.signal_loss_min_altitude_m:
+        return None
+    if (last.vertical_rate or 0.0) < cfg.signal_loss_min_vertical_rate_ms:
+        return None
+    if sightings < cfg.signal_loss_min_sightings:
+        return None
+    elapsed = snapshot_time - _t(last)
+    if elapsed <= 0 or elapsed > cfg.signal_loss_max_extrapolation_s:
+        return None
+    lat, lon = project(last, elapsed)
+    neighbours = neighbourhood_count(cells, lat, lon, cfg.signal_loss_cell_deg)
+    if neighbours < cfg.signal_loss_min_neighbours:
+        return None
+    return Finding(
+        AlertType.SIGNAL_LOSS,
+        Severity.WARNING,
+        f"Perte de signal en vol : plus de position depuis {round(elapsed / 60)} min "
+        f"à {round(alt)} m, dans une zone couverte ({neighbours} avions reçus autour)",
+        {
+            "silent_for_s": elapsed,
+            "last_altitude_m": alt,
+            "neighbours": neighbours,
+            "expected_latitude": round(lat, 4),
+            "expected_longitude": round(lon, 4),
+        },
+    )

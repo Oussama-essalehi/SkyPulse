@@ -1,0 +1,26 @@
+slice_name: "Terrains hors r\xE9f\xE9rentiel (DBSCAN des d\xE9collages / atterrissages)"
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  query_mode: raw
+  all_columns:
+  - n_endpoints
+  - n_aircraft
+  - latitude
+  - longitude
+  - nearest_name
+  - nearest_type
+  - nearest_km
+  - example_callsigns
+  order_by_cols:
+  - '["n_endpoints", false]'
+  row_limit: 25
+  datasource: 21__table
+query_context: null
+cache_timeout: null
+uuid: 8346fc6f-7d10-4574-abd9-38f58a108c91
+version: 1.0.0
+dataset_uuid: 02b948e0-b4ba-4872-84e9-93b0e646bf8a

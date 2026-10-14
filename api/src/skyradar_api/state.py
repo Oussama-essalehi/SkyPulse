@@ -221,6 +221,29 @@ class LiveState:
             "alerts": alerts,
         }
 
+    def region(self, lamin: float, lomin: float, lamax: float, lomax: float) -> dict[str, Any]:
+        """Live counts inside a bounding box (handles boxes crossing the antimeridian)."""
+
+        def inside(s: StateVector) -> bool:
+            if not lamin <= s.latitude <= lamax:
+                return False
+            if lomin <= lomax:
+                return lomin <= s.longitude <= lomax
+            return s.longitude >= lomin or s.longitude <= lomax
+
+        states = [e.state for e in self.aircraft.values() if inside(e.state)]
+        airborne = [s for s in states if not s.on_ground]
+        countries = Counter(s.origin_country for s in states)
+        meta = self.last_meta
+        return {
+            "bbox": [lamin, lomin, lamax, lomax],
+            "aircraft_total": len(states),
+            "airborne": len(airborne),
+            "on_ground": len(states) - len(airborne),
+            "by_origin_country": [{"country": c, "count": n} for c, n in countries.most_common(10)],
+            "data_time": meta.snapshot_time if meta else None,
+        }
+
     def search(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
         q = query.strip().upper()
         if not q:

@@ -1,6 +1,6 @@
 import pytest
 
-from skyradar_common.models import AlertStatus, AlertType, StateVector
+from skyradar_common.models import Alert, AlertStatus, AlertType, SnapshotMeta, StateVector
 from skyradar_ingestion.synthetic import destination_point
 from skyradar_streaming.anomaly.detector import AnomalyDetector
 from skyradar_streaming.anomaly.rules import (
@@ -128,3 +128,151 @@ def test_detector_ignores_duplicates_and_evicts() -> None:
     events = detector.evict_stale(now_epoch=100 + 3600)
     assert [e.status for e in events] == [AlertStatus.RESOLVED]
     assert detector.tracked == 0
+
+
+# --------------------------------------------------------------------- signal loss
+def snap(t: int, source: str = "opensky") -> SnapshotMeta:
+    return SnapshotMeta(
+        snapshot_time=t,
+        ingested_at=float(t),
+        aircraft_count=0,
+        source=source,
+        poll_interval_seconds=96,
+    )
+
+
+def crowd(t: int, lat: float, lon: float, n: int = 8) -> list[StateVector]:
+    """Other aircraft received around (lat, lon): the area is covered."""
+    return [sv(t, lat + 0.1 * i, lon, icao24=f"f{i:05x}", snapshot_time=t) for i in range(n)]
+
+
+def run_snapshots(
+    detector: AnomalyDetector, snapshots: list[list[StateVector]], source: str = "opensky"
+) -> list[Alert]:
+    events: list[Alert] = []
+    for states in snapshots:
+        t = states[0].snapshot_time
+        for s in states:
+            events.extend(detector.process(s, now=t))
+        events.extend(detector.on_snapshot(snap(t, source), now=t))
+    return events
+
+
+def cruising(t: int, **kw: object) -> StateVector:
+    data: dict[str, object] = {
+        "snapshot_time": t,
+        "baro_altitude": 11_000.0,
+        "velocity": 230.0,
+        "true_track": 90.0,
+    }
+    data.update(kw)
+    return sv(t, 48.0, 2.0 + (t - 1000) * 0.003, **data)
+
+
+def test_signal_loss_in_covered_area() -> None:
+    detector = AnomalyDetector()
+    events = run_snapshots(
+        detector,
+        [
+            [cruising(1000), *crowd(1000, 48.0, 2.0)],
+            [cruising(1096), *crowd(1096, 48.0, 2.3)],
+            crowd(1192, 48.0, 2.6),  # our aircraft is gone, neighbours still received
+            crowd(1288, 48.0, 2.9),  # ... and still gone: confirmed
+        ],
+    )
+    lost = [e for e in events if e.type is AlertType.SIGNAL_LOSS]
+    assert len(lost) == 1
+    assert lost[0].icao24 == "abc123"
+    assert lost[0].details["neighbours"] >= 5
+    # It comes back: the alert is resolved.
+    back = detector.process(cruising(1384), now=1384)
+    assert [(e.type, e.status) for e in back] == [(AlertType.SIGNAL_LOSS, AlertStatus.RESOLVED)]
+
+
+def test_no_signal_loss_when_leaving_coverage() -> None:
+    detector = AnomalyDetector()
+    events = run_snapshots(
+        detector,
+        [
+            [cruising(1000), *crowd(1000, 48.0, 2.0)],
+            [cruising(1096), *crowd(1096, 48.0, 2.3)],
+            crowd(1192, 10.0, -40.0),  # nobody received where the aircraft should be
+            crowd(1288, 10.0, -40.0),
+        ],
+    )
+    assert not [e for e in events if e.type is AlertType.SIGNAL_LOSS]
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"baro_altitude": 1_500.0},
+        {"baro_altitude": 6_500.0},
+        {"vertical_rate": -12.0},
+        {"on_ground": True},
+    ],
+)
+def test_no_signal_loss_for_low_descending_or_ground(override: dict[str, object]) -> None:
+    detector = AnomalyDetector()
+    events = run_snapshots(
+        detector,
+        [
+            [cruising(1000, **override), *crowd(1000, 48.0, 2.0)],
+            [cruising(1096, **override), *crowd(1096, 48.0, 2.3)],
+            crowd(1192, 48.0, 2.6),
+            crowd(1288, 48.0, 2.9),
+        ],
+    )
+    assert not [e for e in events if e.type is AlertType.SIGNAL_LOSS]
+
+
+def test_no_signal_loss_in_replay_or_single_sighting() -> None:
+    snapshots = [
+        [cruising(1096), *crowd(1096, 48.0, 2.3)],
+        crowd(1192, 48.0, 2.6),
+        crowd(1288, 48.0, 2.9),
+    ]
+    # Only one sighting before disappearing: not enough evidence.
+    assert not [
+        e for e in run_snapshots(AnomalyDetector(), snapshots) if e.type is AlertType.SIGNAL_LOSS
+    ]
+    replay = [[cruising(1000), *crowd(1000, 48.0, 2.0)], *snapshots]
+    assert not [
+        e
+        for e in run_snapshots(AnomalyDetector(), replay, source="replay")
+        if e.type is AlertType.SIGNAL_LOSS
+    ]
+
+
+def test_no_signal_loss_for_a_transient_dropout() -> None:
+    """Absent from a single snapshot, back in the next one: no alert at all."""
+    detector = AnomalyDetector()
+    events = run_snapshots(
+        detector,
+        [
+            [cruising(1000), *crowd(1000, 48.0, 2.0)],
+            [cruising(1096), *crowd(1096, 48.0, 2.3)],
+            crowd(1192, 48.0, 2.6),
+            [cruising(1288), *crowd(1288, 48.0, 2.9)],
+            crowd(1384, 48.0, 3.2),
+        ],
+    )
+    assert not [e for e in events if e.type is AlertType.SIGNAL_LOSS]
+
+
+def test_signal_loss_disabled_with_sparse_polling() -> None:
+    """Anonymous polling (16 min): too long to extrapolate, the aircraft may have landed."""
+    detector = AnomalyDetector()
+    assert detector.signal_loss_enabled(96)
+    assert not detector.signal_loss_enabled(960)
+    t = [1000 + 960 * i for i in range(4)]
+    events = run_snapshots(
+        detector,
+        [
+            [cruising(t[0]), *crowd(t[0], 48.0, 2.0)],
+            [cruising(t[1]), *crowd(t[1], 48.0, 4.9)],
+            crowd(t[2], 48.0, 7.8),
+            crowd(t[3], 48.0, 10.7),
+        ],
+    )
+    assert not [e for e in events if e.type is AlertType.SIGNAL_LOSS]

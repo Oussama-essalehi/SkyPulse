@@ -1,0 +1,27 @@
+# Soda Core v4 data contract: reconstructed flights mart.
+dataset: skyradar/memory/main/fct_flights
+
+columns:
+  - name: flight_id
+    checks:
+      - missing:
+          name: flight_id_not_missing
+      - duplicate:
+          name: flight_id_unique
+  - name: duration_min
+    checks:
+      - invalid:
+          name: duration_positive
+          valid_min: 0
+          valid_max: 1440
+
+checks:
+  - failed_rows:
+      name: departure_before_arrival
+      qualifier: chronology
+      expression: departure_time > arrival_time
+  - failed_rows:
+      # Average speed above 1300 km/h over the whole flight = segmentation error.
+      name: average_speed_plausible
+      qualifier: speed
+      expression: duration_min > 5 and distance_km / (duration_min / 60.0) > 1300

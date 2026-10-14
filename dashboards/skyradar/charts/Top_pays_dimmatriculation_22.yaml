@@ -1,0 +1,26 @@
+slice_name: Top pays d'immatriculation
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  viz_type: echarts_timeseries_bar
+  x_axis: origin_country
+  metrics:
+  - expressionType: SQL
+    sqlExpression: SUM(aircraft)
+    label: Avions-heures
+  groupby: []
+  orientation: horizontal
+  row_limit: 15
+  x_axis_sort: Avions-heures
+  x_axis_sort_asc: false
+  y_axis_format: ',d'
+  show_legend: false
+  time_range: No filter
+  datasource: 11__table
+query_context: null
+cache_timeout: null
+uuid: c2673cf5-e698-4817-876c-0760669374f5
+version: 1.0.0
+dataset_uuid: 4d11a88e-f3ee-4ff0-9230-c545088e3e1b

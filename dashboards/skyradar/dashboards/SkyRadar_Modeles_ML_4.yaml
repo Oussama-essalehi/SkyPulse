@@ -1,0 +1,221 @@
+dashboard_title: "SkyRadar \u2014 Mod\xE8les ML"
+description: null
+css: null
+slug: skyradar-ml
+certified_by: null
+certification_details: null
+published: true
+uuid: 7ab40f05-69fe-4fd9-8001-72656fec42d7
+position:
+  DASHBOARD_VERSION_KEY: v2
+  ROOT_ID:
+    type: ROOT
+    id: ROOT_ID
+    children:
+    - GRID_ID
+  GRID_ID:
+    type: GRID
+    id: GRID_ID
+    children:
+    - ROW-0
+    - ROW-1
+    - ROW-2
+    - ROW-3
+    - ROW-4
+    parents:
+    - ROOT_ID
+  HEADER_ID:
+    id: HEADER_ID
+    type: HEADER
+    meta:
+      text: "SkyRadar \u2014 Mod\xE8les ML"
+  ROW-0:
+    type: ROW
+    id: ROW-0
+    children:
+    - MARKDOWN-intro
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  MARKDOWN-intro:
+    type: MARKDOWN
+    id: MARKDOWN-intro
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-0
+    meta:
+      width: 12
+      height: 20
+      code: "### SkyRadar \u2014 mod\xE8les de ML (suivis dans MLflow)\n\n**ETA**\
+        \ : LightGBM corrige l'estimation na\xEFve (distance restante / vitesse sol)\
+        \ ; \xE9valuation\nsur les vols les plus r\xE9cents (split temporel par vol).\
+        \ **Pr\xE9vision** : Holt-Winters\n(saisonnalit\xE9 24 h) contre une baseline\
+        \ saisonni\xE8re na\xEFve. **Isolation Forest** sur les\ncaract\xE9ristiques\
+        \ de trajectoire, et **d\xE9routements** (arriv\xE9e diff\xE9rente de la destination\n\
+        habituelle du callsign). **DBSCAN** regroupe les d\xE9collages et atterrissages\
+        \ situ\xE9s loin\nde tout a\xE9roport connu. Les mod\xE8les ne s'entra\xEE\
+        nent qu'au-del\xE0 d'un seuil d'historique.\n"
+  ROW-1:
+    type: ROW
+    id: ROW-1
+    children:
+    - CHART-eta_mae
+    - CHART-eta_baseline
+    - CHART-eta_mape
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-eta_mae:
+    type: CHART
+    id: CHART-eta_mae
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-1
+    meta:
+      width: 4
+      height: 30
+      chartId: 26
+      sliceName: "MAE de l'ETA - mod\xE8le LightGBM (min)"
+      uuid: 96cd5ef2-9555-4e42-92a0-2ee4cc9bc4f3
+  CHART-eta_baseline:
+    type: CHART
+    id: CHART-eta_baseline
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-1
+    meta:
+      width: 4
+      height: 30
+      chartId: 27
+      sliceName: "MAE de l'ETA - baseline na\xEFve (min)"
+      uuid: d5cff9a4-8876-4bdc-b2c5-4894f2bcaab8
+  CHART-eta_mape:
+    type: CHART
+    id: CHART-eta_mape
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-1
+    meta:
+      width: 4
+      height: 30
+      chartId: 28
+      sliceName: "Historique des m\xE9triques des mod\xE8les"
+      uuid: b71ab619-6dac-42db-99be-b419ad134421
+  ROW-2:
+    type: ROW
+    id: ROW-2
+    children:
+    - CHART-eta_history
+    - CHART-forecast
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-eta_history:
+    type: CHART
+    id: CHART-eta_history
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-2
+    meta:
+      width: 6
+      height: 50
+      chartId: 29
+      sliceName: "\xC9volution de la MAE de l'ETA : mod\xE8le vs baseline"
+      uuid: 3c7c899a-74fb-4ffa-a72f-9d7630090f98
+  CHART-forecast:
+    type: CHART
+    id: CHART-forecast
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-2
+    meta:
+      width: 6
+      height: 50
+      chartId: 30
+      sliceName: "Trafic en Europe : observ\xE9 vs pr\xE9vision (Holt-Winters)"
+      uuid: d9b0173f-93a5-4c4d-9fd3-fa23241d12b4
+  ROW-3:
+    type: ROW
+    id: ROW-3
+    children:
+    - CHART-outliers
+    - CHART-diversions
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-outliers:
+    type: CHART
+    id: CHART-outliers
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-3
+    meta:
+      width: 7
+      height: 55
+      chartId: 31
+      sliceName: Vols atypiques (Isolation Forest)
+      uuid: b9208de0-8f15-4bbd-8519-064a89372659
+  CHART-diversions:
+    type: CHART
+    id: CHART-diversions
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-3
+    meta:
+      width: 5
+      height: 55
+      chartId: 32
+      sliceName: "D\xE9routements d\xE9tect\xE9s"
+      uuid: 65aba40a-6c52-4355-9ba7-4f8be61aa306
+  ROW-4:
+    type: ROW
+    id: ROW-4
+    children:
+    - CHART-endpoint_clusters
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-endpoint_clusters:
+    type: CHART
+    id: CHART-endpoint_clusters
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-4
+    meta:
+      width: 12
+      height: 50
+      chartId: 33
+      sliceName: "Terrains hors r\xE9f\xE9rentiel (DBSCAN des d\xE9collages / atterrissages)"
+      uuid: 8346fc6f-7d10-4574-abd9-38f58a108c91
+metadata:
+  color_scheme: supersetColors
+  refresh_frequency: 300
+version: 1.0.0

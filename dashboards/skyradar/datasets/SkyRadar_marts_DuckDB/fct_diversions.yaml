@@ -1,0 +1,30 @@
+table_name: fct_diversions
+main_dttm_col: arrival_time
+description: null
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+schema: main
+sql: select * from read_parquet('/data/marts/fct_diversions.parquet')
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: 622a295b-268a-43e8-b1a4-50b171931be9
+metrics:
+- metric_name: count
+  verbose_name: COUNT(*)
+  metric_type: count
+  expression: COUNT(*)
+  description: null
+  d3format: null
+  currency: null
+  extra: null
+  warning_text: null
+columns: []
+version: 1.0.0
+database_uuid: 3bee14d9-1045-4816-8599-e3c14ea60984

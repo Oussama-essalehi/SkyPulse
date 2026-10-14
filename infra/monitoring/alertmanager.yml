@@ -1,0 +1,16 @@
+# Alert routing. By default alerts are only visible in Prometheus / Grafana / Alertmanager;
+# to be notified, uncomment a receiver (Slack, Discord via a Slack-compatible webhook, email...)
+# and point the route at it. https://prometheus.io/docs/alerting/latest/configuration/
+route:
+  receiver: "none"
+  group_by: ["alertname"]
+  group_wait: 30s
+  repeat_interval: 4h
+
+receivers:
+  - name: "none"
+  # - name: "slack"
+  #   slack_configs:
+  #     - api_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+  #       channel: "#skyradar"
+  #       send_resolved: true

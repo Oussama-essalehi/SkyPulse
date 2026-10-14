@@ -1,6 +1,9 @@
 import { useState } from "react";
 
+import { airportCode, searchAirports } from "../lib/airports";
+import type { Theme } from "../lib/colors";
 import type { AircraftStore } from "../lib/store";
+import type { Airport } from "../lib/types";
 import type { ConnectionStatus } from "../lib/useLive";
 
 export type PanelName = "alerts" | "filters" | "assistant" | null;
@@ -14,6 +17,10 @@ interface Props {
   panel: PanelName;
   onPanel: (panel: PanelName) => void;
   onPick: (icao24: string) => void;
+  airports: Airport[];
+  onPickAirport: (icao: string) => void;
+  theme: Theme;
+  onTheme: (theme: Theme) => void;
 }
 
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
@@ -34,8 +41,10 @@ const SOURCE_LABEL: Record<string, string> = {
 
 export function TopBar(props: Props) {
   const { store, status, visible, alertCount, criticalCount, panel, onPanel, onPick } = props;
+  const { theme, onTheme, airports, onPickAirport } = props;
   const [query, setQuery] = useState("");
-  const hits = store.search(query);
+  const hits = store.search(query, 6);
+  const airportHits = searchAirports(airports, query);
   const toggle = (name: Exclude<PanelName, null>) => onPanel(panel === name ? null : name);
 
   return (
@@ -47,13 +56,34 @@ export function TopBar(props: Props) {
       <div className="search">
         <input
           type="search"
-          placeholder="Callsign ou icao24…"
+          placeholder="Vol, icao24 ou aéroport…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          aria-label="Rechercher un avion"
+          aria-label="Rechercher un avion ou un aéroport"
         />
-        {hits.length > 0 && (
+        {hits.length + airportHits.length > 0 && (
           <ul className="search-results">
+            {airportHits.map((a) => (
+              <li key={a.icao}>
+                <button
+                  className="search-airport"
+                  onClick={() => {
+                    onPickAirport(a.icao);
+                    setQuery("");
+                  }}
+                >
+                  <strong>
+                    <span className="airport-badge" aria-hidden="true">
+                      ◎
+                    </span>{" "}
+                    {airportCode(a)} · {a.city ?? a.name}
+                  </strong>
+                  <span>
+                    {a.icao} · {a.country}
+                  </span>
+                </button>
+              </li>
+            ))}
             {hits.map((a) => (
               <li key={a.icao24}>
                 <button
@@ -105,6 +135,18 @@ export function TopBar(props: Props) {
           onClick={() => toggle("assistant")}
         >
           Assistant
+        </button>
+        <button
+          className="theme-toggle"
+          onClick={() => onTheme(theme === "dark" ? "grey" : "dark")}
+          title={theme === "dark" ? "Passer au thème gris" : "Passer au thème sombre"}
+          aria-label={theme === "dark" ? "Passer au thème gris" : "Passer au thème sombre"}
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor" />
+          </svg>
+          {theme === "dark" ? "Gris" : "Sombre"}
         </button>
       </nav>
     </header>
