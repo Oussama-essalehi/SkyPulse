@@ -1,5 +1,8 @@
-# Option A override: `docker compose -f docker-compose.yml -f deploy/compose.prod.yml --profile demo up -d`
-# Only Caddy is exposed; every service restarts on failure / reboot.
+# Option A override:
+#   demo: docker compose -f docker-compose.yml -f deploy/compose.prod.yml --profile demo up -d
+#   full: SKYRADAR_CADDYFILE=Caddyfile.full ... --profile full up -d  (admin tools behind a password)
+# Only Caddy publishes ports: every other service is reachable on the Docker network only
+# (Dagster, MLflow and the Redpanda console have no authentication of their own).
 services:
   caddy:
     image: caddy:2.8-alpine
@@ -7,22 +10,34 @@ services:
     restart: unless-stopped
     environment:
       SKYRADAR_DOMAIN: ${SKYRADAR_DOMAIN:?set SKYRADAR_DOMAIN in .env}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/${SKYRADAR_CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
     depends_on:
       frontend: { condition: service_healthy }
   redpanda:
     restart: unless-stopped
     ports: !reset []
+  redpanda-console:
+    ports: !reset []
   ingestion:
     ports: !reset []
   api:
     ports: !reset []
   frontend:
+    ports: !reset []
+  object-store:
+    ports: !reset []
+  dagster-webserver:
+    ports: !reset []
+  mlflow:
+    ports: !reset []
+  superset:
     ports: !reset []
 
 volumes:

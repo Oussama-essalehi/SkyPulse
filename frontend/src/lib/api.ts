@@ -23,7 +23,8 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* not JSON */
     }
-    throw new Error(`${response.status} ${detail}`);
+    // Rate limits (public demo) carry a readable message: show it as is.
+    throw new Error(response.status === 429 ? detail : `${response.status} ${detail}`);
   }
   return (await response.json()) as T;
 }

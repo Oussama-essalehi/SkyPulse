@@ -1,0 +1,41 @@
+# Option A, "full" profile: the map on the domain, the admin tools on sub-domains
+# (DNS: a wildcard *.SKYRADAR_DOMAIN record pointing to the VM).
+# Dagster, MLflow and the Redpanda console have no authentication of their own:
+# Caddy asks for a password (ADMIN_USER / ADMIN_PASSWORD_HASH, see docs/deployment.md).
+{$SKYRADAR_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
+
+(admin) {
+	basic_auth {
+		{$ADMIN_USER:admin} {$ADMIN_PASSWORD_HASH}
+	}
+	encode zstd gzip
+}
+
+dagster.{$SKYRADAR_DOMAIN} {
+	import admin
+	reverse_proxy dagster-webserver:3000
+}
+
+mlflow.{$SKYRADAR_DOMAIN} {
+	import admin
+	reverse_proxy mlflow:5000
+}
+
+kafka.{$SKYRADAR_DOMAIN} {
+	import admin
+	reverse_proxy redpanda-console:8080
+}
+
+grafana.{$SKYRADAR_DOMAIN} {
+	import admin
+	reverse_proxy grafana:3000
+}
+
+# Superset has its own login (SUPERSET_ADMIN_* in .env); the password is asked as well.
+superset.{$SKYRADAR_DOMAIN} {
+	import admin
+	reverse_proxy superset:8088
+}

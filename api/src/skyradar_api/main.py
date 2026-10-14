@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from skyradar_api.config import ApiSettings
 from skyradar_api.consumer import LiveConsumer
 from skyradar_api.enrichment import Enrichment
+from skyradar_api.ratelimit import RateLimiter, client_ip, parse_rules
 from skyradar_api.routes import RouteLookup
 from skyradar_api.state import LiveState
 from skyradar_api.ws import Broadcaster
@@ -45,6 +46,20 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     broadcaster = Broadcaster(state, interval=settings.ws_push_interval_seconds)
     enrichment = Enrichment(root=Path(settings.marts_root))
     routes = RouteLookup()
+    assistant_limit = RateLimiter(
+        "assistant",
+        parse_rules(settings.rate_assistant),
+        "Trop de questions : réessayez dans un moment.",
+    )
+    assistant_budget = RateLimiter(
+        "assistant-budget",
+        parse_rules(settings.assistant_daily_budget),
+        "L'assistant a atteint son quota du jour sur cette démo : revenez demain.",
+    )
+    aircraft_limit = RateLimiter(
+        "aircraft", parse_rules(settings.rate_aircraft), "Trop de requêtes : ralentissez."
+    )
+    ws_clients: dict[str, int] = {}
     consumer = LiveConsumer(
         state,
         KafkaSettings(),
@@ -114,7 +129,8 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         return state.search(q)
 
     @app.get("/aircraft/{icao24}")
-    async def aircraft(icao24: str) -> dict[str, Any]:
+    async def aircraft(icao24: str, request: Request) -> dict[str, Any]:
+        aircraft_limit.hit(client_ip(request, settings.client_ip_header))
         detail = state.aircraft_detail(icao24)
         if detail is None:
             raise HTTPException(404, f"aircraft {icao24} is not currently tracked")
@@ -145,9 +161,11 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         return [a.model_dump(mode="json") for a in state.active_alerts()]
 
     @app.post("/assistant/ask")
-    async def ask(request: AskRequest) -> Any:
+    async def ask(request: AskRequest, http: Request) -> Any:
         if not settings.assistant_url:
             raise HTTPException(503, "assistant service is not enabled in this deployment")
+        assistant_limit.hit(client_ip(http, settings.client_ip_header))
+        assistant_budget.hit("all")
         try:
             async with httpx.AsyncClient(timeout=90) as client:
                 response = await client.post(
@@ -165,14 +183,22 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
 
     @app.websocket("/ws/live")
     async def live(ws: WebSocket) -> None:
-        await broadcaster.connect(ws)
+        ip = client_ip(ws, settings.client_ip_header)
+        if ws_clients.get(ip, 0) >= settings.max_ws_per_client:
+            await ws.close(code=1013, reason="too many connections from this client")
+            return
+        ws_clients[ip] = ws_clients.get(ip, 0) + 1
         try:
+            await broadcaster.connect(ws)
             while True:
                 await ws.receive_text()  # keep-alive / ignore client messages
         except WebSocketDisconnect:
             pass
         finally:
             broadcaster.disconnect(ws)
+            ws_clients[ip] -= 1
+            if ws_clients[ip] <= 0:
+                del ws_clients[ip]
 
     return app
 
