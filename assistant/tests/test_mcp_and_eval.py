@@ -69,3 +69,49 @@ async def test_mcp_server_lists_and_calls_tools(marts: Path) -> None:
 )
 def test_grader(question: dict, expected: list, result: dict, ok: bool) -> None:  # type: ignore[type-arg]
     assert run_eval.grade(question, expected, result) is ok
+
+
+def test_eval_run_is_summarized_and_tracked(
+    marts: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    questions = tmp_path / "questions.yaml"
+    questions.write_text(
+        "questions:\n"
+        "  - {id: a, question: 'Combien ?', kind: scalar, sql: select 42}\n"
+        "  - {id: b, question: 'Lequel ?', kind: top, sql: select 'AFR1'}\n"
+        "  - {id: c, question: 'Et ça ?', kind: scalar, sql: select 7}\n"
+    )
+    answers = {
+        "Combien ?": {"answer": "Il y a 42 vols.", "rows": [], "tools_used": ["run_sql"]},
+        "Lequel ?": {"answer": "C'est AFR1.", "rows": [], "tools_used": ["run_sql"]},
+        "Et ça ?": {"answer": "Je ne sais pas.", "rows": [], "tools_used": []},
+    }
+    tracked: list[tuple[dict, dict, dict]] = []  # type: ignore[type-arg]
+    monkeypatch.setattr(run_eval, "QUESTIONS", questions)
+    monkeypatch.setattr(run_eval, "ask", lambda q: answers[q])
+    monkeypatch.setattr(run_eval, "track", lambda *args: tracked.append(args))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    monkeypatch.setenv("SKYRADAR_API_URL", "http://127.0.0.1:9")
+    out = tmp_path / "last_run.json"
+    monkeypatch.setattr("sys.argv", ["run_eval", "--out", str(out)])
+
+    assert run_eval.main_cli() == 0
+    meta, metrics, payload = tracked[0]
+    assert meta["provider"] == "anthropic"
+    assert meta["n_questions"] == 3
+    assert len(meta["prompt_sha"]) == 12
+    assert metrics["accuracy"] == pytest.approx(2 / 3)
+    assert metrics["accuracy_top"] == 1.0
+    assert metrics["accuracy_scalar"] == 0.5
+    assert json.loads(out.read_text())["metrics"] == payload["metrics"]
+
+
+def test_eval_tracking_goes_through_mlflow_helper(monkeypatch: pytest.MonkeyPatch) -> None:
+    from skyradar_ml import tracking
+
+    calls: list[dict] = []  # type: ignore[type-arg]
+    monkeypatch.setattr(tracking, "log_run", lambda *a, **kw: calls.append({"args": a, **kw}))
+    run_eval.track({"provider": "ollama", "model": "qwen"}, {"accuracy": 1.0}, {"results": []})
+    assert calls[0]["args"] == ("assistant-eval", "ollama:qwen")
+    assert calls[0]["metrics"] == {"accuracy": 1.0}
+    assert "eval_results.json" in calls[0]["artifacts"]

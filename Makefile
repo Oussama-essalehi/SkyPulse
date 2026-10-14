@@ -99,7 +99,7 @@ dbt-build: test-lake ## dbt build (models + tests) on the test lake
 	mkdir -p pipeline/dbt/target/marts
 	$(DBT_ENV) $(UV) run --no-sync dbt build
 
-eval-assistant: dbt-build ## Evaluate the assistant on 20 questions (needs ANTHROPIC_API_KEY; DRY=1 to only check references)
+eval-assistant: dbt-build ## Evaluate the assistant (needs ANTHROPIC_API_KEY; DRY=1: references only; logged to MLflow if MLFLOW_TRACKING_URI is set)
 	SKYRADAR_MARTS_ROOT=$(CURDIR)/pipeline/dbt/target/marts $(RUN) python assistant/eval/run_eval.py $(if $(DRY),--dry-run,)
 
 smoke: ## End-to-end smoke test against a running stack (make up-demo first)
