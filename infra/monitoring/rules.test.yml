@@ -1,0 +1,111 @@
+# Unit tests of the alert rules: promtool test rules infra/monitoring/rules.test.yml
+# (run in CI through the Prometheus image, see `make test-monitoring`).
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Ingestion polls every 60 s, then stops publishing at t=10m: the alert waits for
+  # 3 intervals (3 min) plus its `for: 2m`.
+  - interval: 1m
+    input_series:
+      - series: 'skyradar_ingestion_last_snapshot_timestamp{job="ingestion",instance="ingestion:9100"}'
+        values: "0+60x10 600x20"
+      - series: 'skyradar_ingestion_poll_interval_seconds{job="ingestion",instance="ingestion:9100"}'
+        values: "60x30"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: IngestionStalled
+        exp_alerts: []
+      - eval_time: 14m
+        alertname: IngestionStalled
+        exp_alerts: []  # stale for 4 min: pending
+      - eval_time: 16m
+        alertname: IngestionStalled
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: ingestion
+              instance: ingestion:9100
+            exp_annotations:
+              summary: "Ingestion arrêtée : aucun snapshot OpenSky depuis 6m 0s"
+              description: "Vérifier les logs d'ingestion (OpenSky indisponible, quota épuisé, Redpanda)."
+
+  # The API snapshot ages while ingestion (another job) polls every 60 s.
+  - interval: 1m
+    input_series:
+      - series: 'skyradar_api_last_snapshot_age_seconds{job="api",instance="api:8000"}'
+        values: "30x5 120+60x10"
+      - series: 'skyradar_ingestion_poll_interval_seconds{job="ingestion",instance="ingestion:9100"}'
+        values: "60x20"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: LiveMapStale
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: LiveMapStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: api
+              instance: api:8000
+            exp_annotations:
+              summary: "Carte en direct figée (dernier snapshot il y a 8m 0s)"
+
+  # A target that stops answering, and the sink that stops flushing.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="parquet-sink",instance="parquet-sink:9101"}'
+        values: "1x3 0x10"
+      - series: 'skyradar_sink_last_flush_timestamp{job="parquet-sink",instance="parquet-sink:9101"}'
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: parquet-sink
+              instance: parquet-sink:9101
+            exp_annotations:
+              summary: "parquet-sink ne répond plus"
+              description: "Prometheus n'arrive plus à lire les métriques de parquet-sink depuis 2 min."
+      - eval_time: 18m
+        alertname: LakeNotWritten
+        exp_alerts: []  # 18 min without a flush, but `for: 5m` not elapsed yet
+      - eval_time: 21m
+        alertname: LakeNotWritten
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: parquet-sink
+              instance: parquet-sink:9101
+            exp_annotations:
+              summary: "Plus d'écriture dans le lake depuis 21m 0s"
+              description: "parquet-sink bloqué ou stockage objet (SeaweedFS) indisponible."
+
+  # Sink lag summed over partitions.
+  - interval: 1m
+    input_series:
+      - series: 'redpanda_kafka_max_offset{redpanda_topic="aircraft.states",redpanda_partition="0"}'
+        values: "0+20000x40"
+      - series: 'redpanda_kafka_max_offset{redpanda_topic="aircraft.states",redpanda_partition="1"}'
+        values: "0+20000x40"
+      - series: 'redpanda_kafka_consumer_group_committed_offset{redpanda_group="parquet-sink",redpanda_topic="aircraft.states",redpanda_partition="0"}'
+        values: "0x40"
+      - series: 'redpanda_kafka_consumer_group_committed_offset{redpanda_group="parquet-sink",redpanda_topic="aircraft.states",redpanda_partition="1"}'
+        values: "0x40"
+      - series: 'redpanda_kafka_consumer_group_committed_offset{redpanda_group="api",redpanda_topic="aircraft.states",redpanda_partition="0"}'
+        values: "0+20000x40"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: SinkConsumerLag
+        exp_alerts: []  # lag 400 000 since 5m only
+      - eval_time: 25m
+        alertname: SinkConsumerLag
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Le sink Parquet prend du retard (1e+06 messages)"

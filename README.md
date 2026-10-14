@@ -47,7 +47,8 @@ selon l'altitude ; zoom sur l'Europe centrale, recherche de BAW131 puis fiche et
 | **BI** | **Superset** sur DuckDB : dashboards *Trafic aérien*, *Modèles ML* et *Compagnies et flotte* versionnés « as code » et importés au démarrage |
 | **Machine learning** | **ETA LightGBM** qui corrige une baseline physique (MAE comparée dans MLflow, barrière de promotion, servie par l'API), avec le vent arrière en altitude évalué par ablation ; **prévision du trafic** par zone (Holt-Winters contre naïf saisonnier) ; registry et historique des métriques dans **MLflow** ([ADR 0008](docs/adr/0008-ml-models.md)) |
 | **IA générative** | **Assistant en français** : boucle d'outils Claude (text-to-SQL + état en direct) ou modèle local Ollama, **garde-fous** sqlglot (SELECT seul, liste blanche, LIMIT forcé, timeout, DuckDB sans accès fichier), jeu d'évaluation de 22 questions suivi dans **MLflow** (précision par type, empreinte du prompt), **serveur MCP** pour Claude Desktop |
-| **Industrialisation** | Docker multi-stage, healthchecks, profils compose, Makefile, CI GitHub Actions (lint, typage, tests, `dbt build`, ML et éval de l'assistant sur données de test, build des images, test e2e), [guide de déploiement](docs/deployment.md) (VM + Caddy, ou Cloudflare Pages + Fly.io + Kafka managé) |
+| **Exploitation** | **Prometheus + Grafana + Alertmanager** : chaque service expose ses métriques, dashboard *Supervision* provisionné, **8 règles d'alerte testées unitairement** (`promtool test rules`) : ingestion arrêtée, lake plus écrit, carte figée, retard du sink… ; **rétention** du lake brut (30 jours) et de l'historique de l'entrepôt (180 jours), ancrée sur les données et non sur l'horloge |
+| **Industrialisation** | Docker multi-stage, healthchecks, profils compose, Makefile, CI GitHub Actions (lint, typage, tests, `dbt build`, ML et éval de l'assistant sur données de test, build des images, règles d'alerte, test e2e jusqu'au navigateur avec **Playwright**), [guide de déploiement](docs/deployment.md) (VM + Caddy, ou Cloudflare Pages + Fly.io + Kafka managé) avec **limites de débit** par client, budget journalier de l'assistant et outils d'administration derrière un mot de passe |
 
 ## Architecture
 
@@ -97,6 +98,8 @@ make replay               # démo hors ligne : rejoue data/replay/replay.parquet
 | http://localhost:5000 | MLflow |
 | http://localhost:8081 | Console Redpanda |
 | http://localhost:8888/buckets/ | Navigateur du lake (filer SeaweedFS) |
+| http://localhost:3002 | Grafana : dashboard *Supervision* (admin / mot de passe du `.env`) |
+| http://localhost:9090 | Prometheus (cibles, règles d'alerte) |
 
 Autres commandes : `make record` (enregistre 30 min de données réelles pour le replay),
 `make test`, `make lint`, `make dbt-build` (dbt sur un lake de test déterministe),
@@ -104,6 +107,8 @@ Autres commandes : `make record` (enregistre 30 min de données réelles pour le
 `SKYRADAR_SKIP_AIRCRAFT_DB=1` pour sauter la base aéronefs),
 `make eval-assistant` (évaluation de l'assistant ; `DRY=1` pour ne vérifier que les requêtes
 de référence, sans appel au LLM), `make smoke` (tests e2e sur la stack lancée),
+`make test-ui` (test Playwright de la carte dans un navigateur), `make test-monitoring`
+(configurations Prometheus / Alertmanager et tests des règles d'alerte),
 `make logs S=ingestion`, `make down`, `make clean`.
 
 **Sans aucune clé**, tout fonctionne : OpenSky passe en mode anonyme (un snapshot toutes les
@@ -139,13 +144,13 @@ box (`OPENSKY_BBOX`) réduit le coût par appel et donc l'intervalle. Voir
 | `frontend/` | React, MapLibre (tuiles OpenFreeMap, sans clé), deck.gl | Store hors React, `IconLayer` sur `Float32Array`, *dead reckoning* + fondu de correction ; nginx sert le build et proxifie `/api` (aucun secret côté navigateur) |
 | `streaming/` | `parquet_sink` et `anomaly` | At-least-once + noms de fichiers déterministes ([ADR 0005](docs/adr/0005-sink-delivery-semantics.md)) ; règles pures et testées unitairement ; la perte de signal attend deux snapshots manquants et ne s'active qu'avec un polling authentifié (calibrée sur données réelles) |
 | `pipeline/dbt` | staging → intermediate → marts, features ML | 25 modèles et 77 tests, marts en Parquet externes, dbt seul écrivain ([ADR 0003](docs/adr/0003-duckdb-single-writer.md)) ; aucun package dbt externe (tests génériques maison), donc build hors ligne ; filtrage des positions aberrantes (« téléportations » ADS-B) avant la segmentation des vols ; référentiels optionnels (relation typée vide si un fichier manque) |
-| `pipeline/dagster` | Assets dbt, asset checks dbt + Soda, vent en altitude (Open-Meteo, une fois par jour), assets ML (entraînement quotidien, scoring horaire), compaction | `QueuedRunCoordinator` limité à 1 run (DuckDB mono-écrivain) ; métadonnées dans Postgres |
+| `pipeline/dagster` | Assets dbt, asset checks dbt + Soda, vent en altitude (Open-Meteo, une fois par jour), assets ML (entraînement quotidien, scoring horaire), compaction et rétention du lake | `QueuedRunCoordinator` limité à 1 run (DuckDB mono-écrivain) ; métadonnées dans Postgres |
 | `data_quality/` | Contrats **Soda Core** v4 (`raw_aircraft_states`, `fct_flights`) | Déclaratifs, exécutés sur une connexion DuckDB en mémoire ([ADR 0007](docs/adr/0007-data-quality-tool.md)) |
 | `ml/` | ETA, prévision de trafic, Isolation Forest, DBSCAN des extrémités hors aéroport, qualité de la reconstitution | Seuils d'historique (`skipped` tant que les données manquent), baseline systématique, écriture atomique des sorties, tracking MLflow non bloquant ([ADR 0008](docs/adr/0008-ml-models.md)) |
 | `assistant/` | Boucle d'outils Claude (*tool runner* du SDK Anthropic) ou Ollama, garde-fous SQL, serveur MCP, jeu d'évaluation | Défense en profondeur : parsing sqlglot + liste blanche + `LIMIT` + DuckDB `enable_external_access=false` + timeout ; le LLM ne voit que des outils ([docs/mcp.md](docs/mcp.md)) |
 | `dashboards/` | Dashboards Superset « as code » (`build_dashboards.py`) exportés en YAML | Versionnés, diffables, importés automatiquement au démarrage de Superset |
 | `deploy/` | Caddy, surcharge compose de production, configurations Fly.io | Voir [docs/deployment.md](docs/deployment.md) |
-| `infra/` | Images MLflow et Superset, init Postgres | Une instance Postgres, une base par outil |
+| `infra/` | Images MLflow et Superset, init Postgres, supervision (`infra/monitoring` : Prometheus, règles d'alerte et leurs tests, Alertmanager, Grafana provisionné) | Une instance Postgres, une base par outil ; métriques en *pull*, aucune dépendance des services envers la supervision |
 
 Stockage objet : **SeaweedFS** (compatible S3) remplace MinIO, qui ne publie plus d'images
 Docker communautaires ([ADR 0002](docs/adr/0002-object-storage-seaweedfs.md)). Le code reste
@@ -175,7 +180,16 @@ illustrent le dashboard, pas la performance en conditions réelles.</sub>
 ![Graphe des assets Dagster](docs/images/dagster-lineage.png)
 <sub>Groupes d'assets Dagster : lake brut (dont le vent en altitude) → modèles dbt (91 asset
 checks dbt et Soda, tous verts sur les données réelles) → scoring ML horaire, entraînement
-quotidien, et maintenance (compaction du lake).</sub>
+quotidien, et maintenance (compaction puis rétention du lake).</sub>
+
+### Supervision
+
+![Dashboard Grafana de supervision](docs/images/grafana-ops.png)
+<sub>Dashboard *Supervision* (Grafana, profil `full`) sur la stack réelle : avions par
+snapshot, âge du dernier snapshot, crédits OpenSky, écritures du lake, retard du sink,
+requêtes de l'API et alertes en cours. Les règles d'alerte (Prometheus) préviennent quand
+l'ingestion s'arrête, que le lake n'est plus écrit ou que la carte se fige ; Alertmanager
+est livré avec un exemple de route Slack à activer.</sub>
 
 ## État d'avancement
 
@@ -195,7 +209,9 @@ vérifié sur la stack lancée avec de vraies données OpenSky, sauf mention con
 | Modèles suivis dans MLflow avec baseline | ✅ ETA LightGBM vs distance / vitesse, prévision Holt-Winters vs naïf saisonnier, Isolation Forest ; 🟡 vérifié sur le lake de test, sur données réelles ils attendent l'historique minimal |
 | Assistant en français, lecture seule, garde-fous | ✅ boucle d'outils Claude ou Ollama, garde-fous testés, serveur MCP, éval suivie dans MLflow ; 🟡 éval des 22 questions vérifiée côté requêtes de référence (`DRY=1`), l'éval complète demande une clé API |
 | Démo complète sans OpenSky (replay) | ✅ `make replay` (fichier enregistré ou trafic synthétique) |
-| CI verte, README complet | ✅ workflow lint / types / tests / dbt / ML / éval / images / e2e |
+| CI verte, README complet | ✅ workflow lint / types / tests / dbt / ML / éval / images / règles d'alerte / e2e (smoke + Playwright) |
+| Démo publique sûre | ✅ seuls 80/443 publiés, limites de débit par client (assistant, fiche avion, WebSocket), budget journalier de l'assistant, outils d'admin derrière un mot de passe (vérifié avec Caddy en local) |
+| Supervision et rétention | ✅ Prometheus / Grafana / Alertmanager, 8 règles d'alerte testées ; rétention du lake (30 j) et de l'entrepôt (180 j) |
 
 ## Limites connues
 
@@ -261,7 +277,11 @@ credentials, with a polling interval **derived from the daily credit quota**: 96
   staging, ADS-B glitch filtering, flight reconstruction, marts and ML features written as
   Parquet to respect DuckDB's single-writer constraint) and orchestrated by **Dagster**
   (dbt tests and **Soda Core** contracts as asset checks, hourly scoring, daily training,
-  lake compaction);
+  lake compaction and retention: 30 days of raw data, 180 days of warehouse history);
+- **operations**: Prometheus metrics on every service, a provisioned Grafana dashboard and
+  8 alert rules unit-tested with `promtool` (ingestion stalled, lake not written, stale live
+  map, sink lag…); a public demo is protected by per-client rate limits, a daily assistant
+  budget and password-protected admin tools; a Playwright browser test runs in CI;
 - **ML**, tracked in **MLflow** against explicit baselines: a LightGBM ETA model that learns a
   correction of the physics baseline (served by the API only if it beats it), with the
   upper-air tail wind (Open-Meteo, 250 hPa) evaluated by ablation, Holt-Winters traffic

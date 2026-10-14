@@ -27,6 +27,9 @@ x-pipeline-env: &pipeline-env
   MLFLOW_TRACKING_URI: http://mlflow:5000
   # Upper-air winds from Open-Meteo (ETA feature); false for a fully offline stack.
   WEATHER_ENABLED: ${WEATHER_ENABLED:-true}
+  # Retention: raw lake partitions (days, 0 = keep) and warehouse history (dbt).
+  LAKE_RETENTION_DAYS: ${LAKE_RETENTION_DAYS:-30}
+  WAREHOUSE_HISTORY_DAYS: ${WAREHOUSE_HISTORY_DAYS:-180}
 
 services:
   # ------------------------------------------------------------------ streaming
@@ -308,9 +311,62 @@ services:
     depends_on:
       api: { condition: service_healthy }
 
+  # ---------------------------------------------------------------- monitoring
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: [full]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+    volumes:
+      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus:/prometheus
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    profiles: [full]
+    restart: unless-stopped
+    volumes:
+      - ./infra/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    profiles: [full]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me-grafana}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/skyradar-ops.json
+    volumes:
+      - ./infra/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana:/var/lib/grafana
+    ports:
+      - "3002:3000"
+    depends_on:
+      prometheus: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
 volumes:
   redpanda:
   lake:
   postgres:
   warehouse:
   marts:
+  prometheus:
+  grafana:

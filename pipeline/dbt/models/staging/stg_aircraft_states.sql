@@ -3,12 +3,14 @@
         materialized='incremental',
         incremental_strategy='delete+insert',
         unique_key='partition_hour',
+        post_hook="{{ history_retention_hook('partition_hour', var('warehouse_history_days')) }}",
     )
 }}
 
 -- Typed, cleaned and de-duplicated state vectors.
 -- Incremental: each run re-processes the last `staging_lookback_hours` hourly
 -- partitions (late files, sink replays) and replaces them wholesale.
+-- It outlives the raw lake (30 days): history is capped by `warehouse_history_days`.
 
 with raw as (
     {% if lake_has_files('aircraft_states') %}

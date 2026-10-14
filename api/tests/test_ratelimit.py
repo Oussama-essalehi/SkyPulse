@@ -70,3 +70,17 @@ def test_websocket_connections_per_client() -> None:
     # The slot is released when the first connection closes.
     with client.websocket_connect("/ws/live") as again:
         again.receive_text()
+
+
+def test_metrics_endpoint() -> None:
+    client = app_client(API_RATE_AIRCRAFT="1/minute")
+    client.get("/aircraft/abc123")
+    client.get("/aircraft/abc123")  # refused
+    response = client.get("/metrics/", headers={"Accept-Encoding": "gzip"})
+    # Compressed once (Prometheus cannot read a double gzip; httpx can).
+    assert response.headers.get_list("content-encoding") == ["gzip"]
+    body = response.text
+    assert "skyradar_api_aircraft " in body
+    assert "skyradar_api_kafka_connected 0.0" in body
+    assert 'skyradar_api_rate_limited_total{limiter="aircraft"}' in body
+    assert 'route="/aircraft/{icao24}",status="429"' in body

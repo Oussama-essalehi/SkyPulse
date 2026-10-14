@@ -20,6 +20,8 @@ from dataclasses import dataclass
 
 from fastapi import HTTPException, Request, WebSocket
 
+from skyradar_api.metrics import RATE_LIMITED
+
 WINDOWS = {"second": 1, "minute": 60, "hour": 3600, "day": 86400}
 MAX_KEYS = 50_000
 
@@ -78,6 +80,7 @@ class RateLimiter:
     def hit(self, key: str) -> None:
         wait = self.check(key)
         if wait is not None:
+            RATE_LIMITED.labels(self.name).inc()
             raise HTTPException(
                 429,
                 detail=self.message,

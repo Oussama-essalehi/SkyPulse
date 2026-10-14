@@ -22,6 +22,7 @@ def test_definitions_load() -> None:
         "endpoint_clusters",
         "diversion_alerts",
         "lake_compaction",
+        "lake_retention",
         "ml_eta_features",
         "ml_flight_features",
         "fct_diversions",

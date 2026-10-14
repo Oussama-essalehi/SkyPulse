@@ -22,6 +22,8 @@ from typing import Any
 import httpx
 import structlog
 
+from skyradar_api.metrics import ROUTE_LOOKUPS
+
 log = structlog.get_logger(__name__)
 
 EARTH_RADIUS_KM = 6371.0
@@ -171,10 +173,12 @@ class RouteLookup:
             return None
         found, cached = self._routes.get(callsign)
         if found:
+            ROUTE_LOOKUPS.labels("route", "cached").inc()
             return cached  # type: ignore[no-any-return]
         try:
             payload = await self._get(f"callsign/{callsign}")
         except (httpx.HTTPError, ValueError):
+            ROUTE_LOOKUPS.labels("route", "error").inc()
             return None  # not cached: a transient error is retried on the next click
         route = None
         data = (payload or {}).get("flightroute")
@@ -189,6 +193,7 @@ class RouteLookup:
             except (KeyError, TypeError, ValueError):
                 route = None
         self._routes.put(callsign, route)
+        ROUTE_LOOKUPS.labels("route", "found" if route else "unknown").inc()
         return route
 
     async def aircraft(self, icao24: str) -> dict[str, Any] | None:
@@ -198,10 +203,12 @@ class RouteLookup:
         key = icao24.lower()
         found, cached = self._aircraft.get(key)
         if found:
+            ROUTE_LOOKUPS.labels("aircraft", "cached").inc()
             return cached  # type: ignore[no-any-return]
         try:
             payload = await self._get(f"aircraft/{key}")
         except (httpx.HTTPError, ValueError):
+            ROUTE_LOOKUPS.labels("aircraft", "error").inc()
             return None
         data = (payload or {}).get("aircraft")
         info = None
@@ -215,4 +222,5 @@ class RouteLookup:
                 "operator_icao": data.get("registered_owner_operator_flag_code") or None,
             }
         self._aircraft.put(key, info)
+        ROUTE_LOOKUPS.labels("aircraft", "found" if info else "unknown").inc()
         return info

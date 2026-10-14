@@ -19,8 +19,10 @@ import httpx
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from prometheus_client import make_asgi_app
 from pydantic import BaseModel, Field
 
+from skyradar_api import metrics
 from skyradar_api.config import ApiSettings
 from skyradar_api.consumer import LiveConsumer
 from skyradar_api.enrichment import Enrichment
@@ -86,6 +88,25 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    # Prometheus: live gauges read at scrape time, request counter per route template.
+    metrics.AIRCRAFT.set_function(lambda: len(state.aircraft))
+    metrics.WS_CLIENTS.set_function(lambda: broadcaster.client_count)
+    metrics.KAFKA_CONNECTED.set_function(lambda: float(consumer.connected))
+    metrics.SNAPSHOT_AGE.set_function(
+        lambda: time.time() - state.last_meta.snapshot_time if state.last_meta else float("nan")
+    )
+    # GZipMiddleware below compresses large responses: the metrics app must not as well.
+    app.mount("/metrics", make_asgi_app(disable_compression=True))
+
+    @app.middleware("http")
+    async def count_requests(request: Request, call_next: Any) -> Any:
+        response = await call_next(request)
+        route = request.scope.get("route")
+        template = getattr(route, "path", "other")
+        if template != "/metrics":
+            metrics.REQUESTS.labels(request.method, template, response.status_code).inc()
+        return response
+
     app.state.live = state
     app.state.broadcaster = broadcaster
     app.state.enrichment = enrichment

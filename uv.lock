@@ -2486,6 +2486,7 @@ dependencies = [
     { name = "httpx" },
     { name = "lightgbm" },
     { name = "numpy" },
+    { name = "prometheus-client" },
     { name = "skyradar-common" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -2497,6 +2498,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "lightgbm", specifier = ">=4.5" },
     { name = "numpy", specifier = ">=1.26" },
+    { name = "prometheus-client", specifier = ">=0.21" },
     { name = "skyradar-common", editable = "libs/common" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
