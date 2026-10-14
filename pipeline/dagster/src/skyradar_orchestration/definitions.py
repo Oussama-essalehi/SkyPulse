@@ -25,7 +25,7 @@ from dagster_dbt import DbtCliResource, DbtProject, dbt_assets
 from skyradar_ml import endpoints, eta, forecast, outliers
 from skyradar_ml.marts import read_mart
 from skyradar_ml.reconstruction import track_reconstruction_quality
-from skyradar_orchestration import alerts, compaction, weather
+from skyradar_orchestration import alerts, compaction, retention, weather
 from skyradar_orchestration.quality import build_soda_checks
 
 DBT_PROJECT_DIR = Path(os.getenv("DBT_PROJECT_DIR", Path(__file__).parents[3] / "dbt"))
@@ -239,6 +239,28 @@ def lake_compaction(context: AssetExecutionContext) -> MaterializeResult:
     )
 
 
+@asset(
+    deps=[RAW_STATES, RAW_ALERTS, upper_winds, lake_compaction],
+    group_name="maintenance",
+    kinds={"parquet", "s3"},
+    description="Delete raw lake partitions older than LAKE_RETENTION_DAYS (states; "
+    "alerts and winds: a year). The warehouse keeps its own history.",
+)
+def lake_retention(context: AssetExecutionContext) -> MaterializeResult:
+    report = retention.purge()
+    for line in report.details:
+        context.log.info(line)
+    return MaterializeResult(
+        metadata=_meta(
+            {
+                "partitions_deleted": report.partitions_deleted,
+                "files_deleted": report.files_deleted,
+                "mb_deleted": round(report.bytes_deleted / 1e6, 1),
+            }
+        )
+    )
+
+
 dbt_hourly_job = define_asset_job(
     "dbt_hourly",
     selection=(
@@ -259,7 +281,7 @@ ml_daily_job = define_asset_job(
 maintenance_job = define_asset_job(
     "lake_maintenance",
     selection=AssetSelection.groups("maintenance"),
-    description="Daily compaction of the raw lake.",
+    description="Daily compaction, then retention, of the raw lake.",
 )
 
 defs = Definitions(
@@ -274,6 +296,7 @@ defs = Definitions(
         endpoint_clusters,
         diversion_alerts,
         lake_compaction,
+        lake_retention,
     ],
     asset_checks=soda_checks,
     jobs=[dbt_hourly_job, ml_daily_job, maintenance_job],

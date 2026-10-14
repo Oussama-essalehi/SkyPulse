@@ -52,6 +52,8 @@ urls:
 	@echo "  Dagster ......... http://localhost:3001"
 	@echo "  Superset ........ http://localhost:8088  (admin / see .env)"
 	@echo "  MLflow .......... http://localhost:5000"
+	@echo "  Grafana ......... http://localhost:3002  (supervision ; admin / see .env)"
+	@echo "  Prometheus ...... http://localhost:9090"
 	@echo "  Redpanda console  http://localhost:8081"
 	@echo "  Lake (filer) .... http://localhost:8888/buckets/"
 
@@ -67,7 +69,7 @@ test-lake: ## Build a deterministic local lake for dbt tests
 	$(RUN) python scripts/build_test_lake.py --root $(TEST_LAKE)
 
 # ------------------------------------------------------------------- dev
-.PHONY: install test lint format typecheck dbt-parse dbt-build eval-assistant smoke test-ui front-dev
+.PHONY: install test lint format typecheck dbt-parse dbt-build eval-assistant smoke test-ui test-monitoring front-dev
 install: ## Install Python (uv) and frontend (npm) dependencies + pre-commit hooks
 	$(UV) sync --all-packages
 	cd frontend && npm ci
@@ -82,6 +84,12 @@ lint: ## Linters and type checks
 	$(RUN) ruff format --check .
 	$(RUN) mypy libs/common/src ingestion/src api/src streaming/src assistant/src ml/src
 	cd frontend && npm run lint && npm run typecheck
+
+MONITORING = docker run --rm -v $(CURDIR)/infra/monitoring:/etc/prometheus:ro -w /etc/prometheus
+test-monitoring: ## Check the Prometheus / Alertmanager configs and unit-test the alert rules
+	$(MONITORING) --entrypoint promtool prom/prometheus:v3.5.0 check config prometheus.yml
+	$(MONITORING) --entrypoint promtool prom/prometheus:v3.5.0 test rules rules.test.yml
+	$(MONITORING) --entrypoint amtool prom/alertmanager:v0.28.1 check-config alertmanager.yml
 
 format: ## Auto-format code
 	$(RUN) ruff check --fix .

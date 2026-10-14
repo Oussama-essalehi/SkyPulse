@@ -25,6 +25,10 @@ vars:
   endpoint_max_distance_km: 15
   # Incremental staging re-processes this many hours of partitions each run.
   staging_lookback_hours: 3
+  # stg_aircraft_states keeps this much history (days before its newest partition);
+  # older positions are deleted after each run. 0 keeps everything. The raw lake has
+  # its own, shorter retention (LAKE_RETENTION_DAYS), so this is the long-term copy.
+  warehouse_history_days: "{{ env_var('WAREHOUSE_HISTORY_DAYS', '180') }}"
 
 models:
   skyradar:

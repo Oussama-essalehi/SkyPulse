@@ -39,7 +39,7 @@ def filesystem_and_base() -> tuple[pafs.FileSystem, str]:
     return pafs.LocalFileSystem(), root
 
 
-def _partition_time(directory: str) -> datetime:
+def partition_time(directory: str) -> datetime:
     date = directory.split("date=")[1].split("/")[0]
     hour = int(directory.split("hour=")[1].split("/")[0])
     return datetime.strptime(date, "%Y-%m-%d").replace(hour=hour, tzinfo=UTC)
@@ -58,7 +58,7 @@ def compact(min_age_hours: float = 2.0, now: float | None = None) -> CompactionR
             if info.type == pafs.FileType.File and info.path.endswith(".parquet"):
                 groups[info.path.rsplit("/", 1)[0]].append(info.path)
         for directory, files in sorted(groups.items()):
-            closed = (now - _partition_time(directory).timestamp()) / 3600 >= min_age_hours + 1
+            closed = (now - partition_time(directory).timestamp()) / 3600 >= min_age_hours + 1
             if len(files) < 2 or not closed:
                 continue
             files.sort()

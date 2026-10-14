@@ -54,6 +54,26 @@ ports 80/443 sont publiés, les sous-domaines d'administration répondent 401 sa
 passe, et la 61e fiche d'avion dans la minute répond 429, même avec un `X-Forwarded-For`
 différent à chaque requête.
 
+### Supervision et rétention (profil `full`)
+
+- **Grafana** (`grafana.radar.example.com`, mot de passe Caddy puis login Grafana
+  `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD`) : dashboard *SkyRadar — Supervision*
+  provisionné, alimenté par Prometheus (rétention des métriques `PROMETHEUS_RETENTION`,
+  15 jours par défaut).
+- **Alertes** (`infra/monitoring/rules.yml`, testées par `make test-monitoring`) : service
+  injoignable, ingestion arrêtée (aucun snapshot depuis trois intervalles de polling),
+  crédits OpenSky presque épuisés, lake plus écrit depuis 15 min, carte figée, API
+  déconnectée de Redpanda, retard du sink, budget de l'assistant atteint. Pour être
+  prévenu, décommenter le récepteur Slack d'`infra/monitoring/alertmanager.yml` (webhook
+  entrant) ; sans cela les alertes restent visibles dans Grafana et Prometheus.
+- **Rétention** : le job Dagster `lake_maintenance` (02:15) supprime les partitions brutes
+  de plus de `LAKE_RETENTION_DAYS` jours (30 ; alertes et vent : un an) ; dbt limite
+  l'historique des positions de l'entrepôt à `WAREHOUSE_HISTORY_DAYS` jours (180). Les deux
+  durées sont comptées depuis la donnée la plus récente : une stack arrêtée plusieurs
+  semaines ou un lake rempli par un replay ancien ne sont jamais vidés au redémarrage.
+  Ordre de grandeur avec le flux mondial authentifié : ~1 Go de Parquet brut par jour avant
+  compaction, donc ~20 à 30 Go pour 30 jours.
+
 ## Option B — hébergement séparé (Cloudflare Pages + Fly.io + Kafka managé)
 
 ```

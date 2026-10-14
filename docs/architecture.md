@@ -86,7 +86,21 @@ flowchart LR
      récents sont publiés sur `aircraft.alerts` ;
    - `ml_daily` (03:30) : `eta_model` et `flight_reconstruction_quality`, loggués dans
      MLflow ; le modèle ETA promu est écrit dans le volume des marts, que l'API recharge ;
-   - `lake_maintenance` (02:15) : compaction des partitions closes en un fichier par heure.
+   - `lake_maintenance` (02:15) : compaction des partitions closes en un fichier par heure,
+     puis rétention : partitions brutes de plus de `LAKE_RETENTION_DAYS` jours (30)
+     supprimées. `stg_aircraft_states` garde son propre historique, plus long
+     (`WAREHOUSE_HISTORY_DAYS`, 180 jours, *post-hook* dbt) ; les deux durées sont comptées
+     depuis la donnée la plus récente, jamais depuis l'horloge.
+
+## Supervision
+
+Chaque service expose des métriques Prometheus (ingestion `:9100`, parquet-sink `:9101`,
+anomaly-detector `:9102`, API `/metrics/`, Redpanda `/public_metrics`). Prometheus
+(profil `full`) les collecte toutes les 15 s et évalue les règles d'`infra/monitoring/rules.yml`
+(testées par `promtool test rules`), envoyées à Alertmanager ; Grafana affiche le dashboard
+provisionné *SkyRadar — Supervision*. Côté API : avions en mémoire, clients WebSocket, âge
+du dernier snapshot, état de la connexion à Redpanda, requêtes par route et statut, refus
+des limites de débit, recherches de routes adsbdb.
 
 ## Assistant
 
@@ -113,3 +127,5 @@ exposés par un serveur MCP ([mcp.md](mcp.md)).
 | mlflow | full | 5000 |
 | superset | full | 8088 |
 | assistant | full | interne (8001) |
+| prometheus / alertmanager | full | 9090 / interne (9093) |
+| grafana | full | 3002 |

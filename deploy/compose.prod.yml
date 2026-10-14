@@ -39,6 +39,10 @@ services:
     ports: !reset []
   superset:
     ports: !reset []
+  prometheus:
+    ports: !reset []
+  grafana:
+    ports: !reset []
 
 volumes:
   caddy_data:
