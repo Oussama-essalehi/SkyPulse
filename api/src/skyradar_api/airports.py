@@ -98,7 +98,7 @@ class AirportBoard:
         }
 
     # ------------------------------------------------------------------ board
-    async def board(self, icao: str) -> dict[str, Any] | None:
+    async def board(self, icao: str, limit: int = MAX_ROWS) -> dict[str, Any] | None:
         self.enrichment.refresh()
         airport = self.enrichment.airports.get(icao.upper())
         if airport is None:
@@ -123,9 +123,9 @@ class AirportBoard:
                 "departures": len(departures),
                 "ground": len(ground),
             },
-            "arrivals": arrivals[:MAX_ROWS],
-            "departures": departures[:MAX_ROWS],
-            "ground": ground[:MAX_ROWS],
+            "arrivals": arrivals[:limit],
+            "departures": departures[:limit],
+            "ground": ground[:limit],
             "pending_lookups": pending,
             "route_lookup": self.routes.enabled,
             "history": history,

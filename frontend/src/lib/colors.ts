@@ -1,81 +1,50 @@
 export type RGB = [number, number, number];
-export type Theme = "dark" | "grey";
-
-interface Palette {
-  /** Altitude (m) -> color stops, low = warm, high = cold (radar style). */
-  stops: [number, RGB][];
-  ground: RGB;
-  unknown: RGB;
-  selected: RGB;
-  trail: [number, number, number, number];
-  /** Airport ring and label, airport fill (drawn under the aircraft). */
-  airport: RGB;
-  airportFill: RGB;
-}
 
 /**
- * The grey theme uses darker stops: the bright yellows and cyans of the dark theme vanish
- * on a light grey map. Every color keeps a contrast >= 3:1 (WCAG, graphics) against its
- * basemap (land and water), checked in theme.test.ts.
+ * One palette, drawn on a mid-tone basemap (olive-grey land, slate-teal water: see
+ * MAP_COLORS). On a mid-tone background no fill color can contrast with both land and
+ * water, so every aircraft gets a dark outline: the outline contrasts with the map, the
+ * bright fill with the outline (both >= 3:1, WCAG graphics, checked in colors.test.ts).
  */
-export const PALETTES: Record<Theme, Palette> = {
-  dark: {
-    stops: [
-      [0, [253, 224, 71]],
-      [1500, [251, 146, 60]],
-      [4000, [244, 63, 94]],
-      [7000, [192, 132, 252]],
-      [10000, [56, 189, 248]],
-      [13000, [94, 234, 212]],
-    ],
-    ground: [100, 116, 139],
-    unknown: [148, 163, 184],
-    selected: [255, 255, 255],
-    trail: [56, 189, 248, 200],
-    airport: [203, 213, 225],
-    airportFill: [15, 23, 36],
-  },
-  grey: {
-    stops: [
-      [0, [161, 98, 7]],
-      [1500, [194, 65, 12]],
-      [4000, [190, 18, 60]],
-      [7000, [126, 34, 206]],
-      [10000, [3, 105, 161]],
-      [13000, [15, 118, 110]],
-    ],
-    ground: [71, 85, 105],
-    unknown: [71, 85, 105],
-    selected: [15, 23, 42],
-    trail: [3, 105, 161, 220],
-    airport: [30, 41, 59],
-    airportFill: [241, 243, 246],
-  },
+export const PALETTE = {
+  /** Altitude (m) -> color stops, low = warm, high = cold (radar style). */
+  stops: [
+    [0, [253, 224, 71]],
+    [1500, [251, 146, 60]],
+    [4000, [244, 63, 94]],
+    [7000, [192, 132, 252]],
+    [10000, [56, 189, 248]],
+    [13000, [94, 234, 212]],
+  ] as [number, RGB][],
+  ground: [214, 211, 204] as RGB,
+  unknown: [203, 213, 225] as RGB,
+  selected: [255, 255, 255] as RGB,
+  /** Dark halo drawn under every aircraft icon. */
+  outline: [17, 21, 24] as RGB,
+  /** Observed track of the selected aircraft, and its dark casing. */
+  trail: [103, 232, 249, 255] as [number, number, number, number],
+  trailCasing: [17, 21, 24, 200] as [number, number, number, number],
+  /** Airport dot and label (dark, discreet), and its thin light ring / label halo. */
+  airport: [36, 40, 43] as RGB,
+  airportRing: [222, 220, 212] as RGB,
 };
 
-let active: Palette = PALETTES.dark;
-
-/** Switch the palette used by the map, the legend and the aircraft card. */
-export function setPalette(theme: Theme): void {
-  active = PALETTES[theme];
-}
+export type Palette = typeof PALETTE;
 
 export function palette(): Palette {
-  return active;
+  return PALETTE;
 }
 
-export const ALTITUDE_STOPS = PALETTES.dark.stops;
-export const GROUND_COLOR: RGB = PALETTES.dark.ground;
 export const ALERT_COLORS: Record<string, RGB> = {
   critical: [239, 68, 68],
   warning: [245, 158, 11],
   info: [56, 189, 248],
 };
 
-export function altitudeColor(alt: number | null, onGround: boolean, p = active): RGB {
-  if (onGround) return p.ground;
-  if (alt === null) return p.unknown;
-  const stops = p.stops;
+export function altitudeColor(alt: number | null, onGround: boolean): RGB {
+  if (onGround) return PALETTE.ground;
+  if (alt === null) return PALETTE.unknown;
+  const stops = PALETTE.stops;
   if (alt <= stops[0][0]) return stops[0][1];
   for (let i = 1; i < stops.length; i++) {
     const [a1, c1] = stops[i];

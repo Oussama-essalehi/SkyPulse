@@ -56,7 +56,10 @@ export function AircraftPanel({ aircraft, detail, error, onClose, back }: Props)
       </button>
       {backLink}
       <header>
-        <h2 style={{ color }}>{aircraft.callsign ?? "Sans callsign"}</h2>
+        <h2>
+          <span className="alt-dot" style={{ background: color }} title="Couleur d'altitude" />
+          {aircraft.callsign ?? "Sans callsign"}
+        </h2>
         <span className="muted">
           {aircraft.icao24.toUpperCase()} · {aircraft.country}
         </span>

@@ -8,24 +8,29 @@ Projet portfolio de bout en bout : ingestion temps réel, streaming, data engine
 analytics, ML et IA générative.
 
 ![Carte SkyRadar en direct : l'Europe en journée, zoom, recherche d'un vol et fiche avion](docs/images/map.gif)
-<sub>Enregistrement réel (14/10/2026, 11 h UTC, accéléré 3×) : ~10 000 avions suivis, couleur
-selon l'altitude ; zoom sur l'Europe centrale, recherche de BAW131 puis fiche et trace
+<sub>Enregistrement réel (14/10/2026, 18 h UTC, accéléré 3×) : ~15 000 avions suivis, couleur
+selon l'altitude ; zoom, recherche d'EZY96XD (Birmingham → Faro) puis fiche et trajet
 ([capture fixe](docs/images/map.png)).</sub>
 
-| Fiche avion : compagnie, type, départ → destination, heures, progression | Mobile |
+| Fiche avion : compagnie, type, départ → destination, heures, progression, trajet | Mobile |
 |---|---|
-| ![UAE214, Boeing 777 d'Emirates Miami → Dubaï au-dessus de la Normandie : départ, arrivée estimée, temps de vol, progression](docs/images/aircraft-panel.png) | <img src="docs/images/mobile.png" width="220" alt="Version mobile"> |
+| ![Fiche d'un vol en cours : compagnie, type, départ et arrivée, heures, progression ; sur la carte, le trajet depuis l'aéroport de départ](docs/images/aircraft-panel.png) | <img src="docs/images/mobile.png" width="220" alt="Version mobile"> |
 
-<sub>Une alerte détectée en direct (descente rapide d'un Etihad au-dessus de la mer Noire) :
-[capture](docs/images/aircraft-alert.png). Deux thèmes, **gris** clair (captures ci-dessus) et
-**sombre** (bouton en haut à droite, choix mémorisé, thème du système par défaut) :
-[capture du thème sombre](docs/images/map-dark.png).</sub>
+<sub>Carte en tons doux (terres gris-olive, eau bleu ardoise), avions cernés de sombre pour rester
+lisibles sur tous les fonds. Le trajet part de l'aéroport de départ : en pointillés la partie
+estimée (avion repéré déjà en vol), en trait plein la partie observée. Une alerte détectée en
+direct : [capture](docs/images/aircraft-alert.png).</sub>
 
 ![Tableau de l'aéroport de Paris-CDG : arrivées en approche avec provenance et heure estimée](docs/images/airport-board.png)
 <sub>**Vue aéroport** : un clic sur un aéroport (ou la recherche de son code, `CDG`, `LFPG`, ou
 d'une ville) ouvre son tableau en direct : arrivées (provenance, heure d'arrivée estimée),
 départs (destination, heure de décollage), avions au sol, et les mouvements reconstitués des
 dernières 24 h. Chaque ligne ouvre la fiche de l'avion.</sub>
+
+![Filtre aéroport : seuls les avions de Paris-CDG restent sur la carte, avec la météo de l'aéroport](docs/images/airport-filter.png)
+<sub>**Filtre aéroport** (Filtres → Aéroport) : la carte ne garde que les avions de l'aéroport
+choisi (arrivées, départs, au sol) et affiche sa **météo** : dernier bulletin METAR décodé
+(température, vent, visibilité, nuages, humidité, pression, catégorie de vol VFR / IFR).</sub>
 
 ---
 
@@ -49,7 +54,7 @@ dernières 24 h. Chaque ligne ouvre la fiche de l'avion.</sub>
 | **Reconstitution de vols** | Segmentation des trajectoires et rattachement des extrémités à l'aéroport le plus proche (OurAirports), en SQL, car l'ADS-B ne transporte ni origine ni destination ; **DBSCAN** des décollages / atterrissages hors référentiel (terrains, héliports) |
 | **Enrichissement** | **Base aéronefs OpenSky** (520 000 avions : immatriculation, type, opérateur), types OACI (Doc 8643 : catégorie de sillage), compagnies OpenFlights, routes publiées des callsigns (**adsbdb**, contrôlées contre la position), **vent en altitude** Open-Meteo (250 hPa) |
 | **Détection d'anomalies** | En streaming : squawk 7500/7600/7700, descente rapide, **attente / tourne en rond**, **perte de signal en zone couverte** (position extrapolée + couverture des récepteurs). En batch : **déroutements** (destination habituelle du callsign) et vols atypiques (**Isolation Forest** expliqué) |
-| **Produit & front** | React + MapLibre + **deck.gl** sur buffers binaires, **interpolation sphérique** des positions, WebSocket au format colonne, responsive, thèmes sombre et gris (palette d'altitude contrôlée à 3:1 de contraste minimum sur chaque fond de carte), **tableau des arrivées / départs de chaque aéroport** (6 000 aéroports affichés selon le zoom) |
+| **Produit & front** | React + MapLibre + **deck.gl** sur buffers binaires, **interpolation sphérique** des positions, WebSocket au format colonne, responsive, fond de carte en tons doux et avions cernés (contrastes de 3:1 minimum vérifiés par des tests), **tableau des arrivées / départs de chaque aéroport** (6 000 aéroports affichés selon le zoom), **filtre aéroport avec sa météo** (METAR décodé) |
 | **BI** | **Superset** sur DuckDB : dashboards *Trafic aérien*, *Modèles ML* et *Compagnies et flotte* versionnés « as code » et importés au démarrage |
 | **Machine learning** | **ETA LightGBM** qui corrige une baseline physique (MAE comparée dans MLflow, barrière de promotion, servie par l'API), avec le vent arrière en altitude évalué par ablation ; **prévision du trafic** par zone (Holt-Winters contre naïf saisonnier) ; registry et historique des métriques dans **MLflow** ([ADR 0008](docs/adr/0008-ml-models.md)) |
 | **IA générative** | **Assistant en français** : boucle d'outils Claude (text-to-SQL + état en direct) ou modèle local Ollama, **garde-fous** sqlglot (SELECT seul, liste blanche, LIMIT forcé, timeout, DuckDB sans accès fichier), jeu d'évaluation de 22 questions suivi dans **MLflow** (précision par type, empreinte du prompt), **serveur MCP** pour Claude Desktop |
@@ -94,6 +99,20 @@ make up                   # stack complète (profil "full")
 make up-demo              # carte en direct uniquement (Redpanda, ingestion, API, frontend)
 make replay               # démo hors ligne : rejoue data/replay/replay.parquet (ou trafic synthétique)
 ```
+
+**Windows (PowerShell, sans `make`)** : Docker Desktop doit être lancé. Chaque cible `make`
+correspond à des commandes simples :
+
+```powershell
+Copy-Item .env.example .env                          # une seule fois
+python scripts/seed_reference_data.py                # make seed (aéroports, base aéronefs, compagnies)
+docker compose --profile full up -d --build --wait   # make up
+docker compose --profile demo up -d --build --wait   # make up-demo
+$env:SOURCE="replay"; docker compose --profile demo up -d --build --wait   # make replay
+docker compose --profile full --profile demo down    # make down
+```
+
+Avec WSL2 (Ubuntu), les commandes `make` fonctionnent telles quelles.
 
 | URL | Service |
 |---|---|
@@ -232,7 +251,8 @@ vérifié sur la stack lancée avec de vraies données OpenSky, sauf mention con
   alors une extrapolation qui ignore les virages. Un compte gratuit ramène l'intervalle à 96 s.
 - **Données** : OpenSky Network (positions et base aéronefs), **usage non commercial et
   recherche uniquement** (<https://opensky-network.org/about/terms-of-use>) ; OpenFlights
-  (compagnies, ODbL) ; Open-Meteo (vent, CC BY 4.0) ; OurAirports (domaine public) ; adsbdb
+  (compagnies, ODbL) ; Open-Meteo (vent, CC BY 4.0) ; aviationweather.gov / NOAA (METAR des
+  aéroports, domaine public, `WEATHER_LOOKUP=off` pour le couper) ; OurAirports (domaine public) ; adsbdb
   (routes et avions, interrogé à la demande par l'API, `ROUTE_LOOKUP=off` pour le couper).
   Aucun de ces fichiers n'est redistribué dans ce dépôt : `make seed` les télécharge.
 - **Tableau d'aéroport** : l'ADS-B ne dit pas où va un avion ; les arrivées et départs
@@ -277,13 +297,14 @@ credentials, with a polling interval **derived from the daily credit quota**: 96
 
 - a **FastAPI** service keeps the live state in memory and streams column-oriented deltas over
   WebSocket to a **React + MapLibre + deck.gl** map, which renders 11k+ aircraft with
-  spherical dead-reckoning interpolation (dark and light grey themes); the aircraft panel
+  spherical dead-reckoning interpolation on a muted basemap; the aircraft panel
   shows origin and destination (published route from adsbdb, checked against the live
   position and track, else SkyRadar's own history), departure and estimated arrival times,
   flight progress and an **ETA**, plus the airline, aircraft type and registration
   from the OpenSky aircraft database (520k aircraft) and OpenFlights; clicking an airport
   (or searching its code) opens its **live arrivals / departures board** with the last
-  24 hours of reconstructed movements;
+  24 hours of reconstructed movements, and an airport filter keeps only that airport's
+  aircraft on the map with its current weather (decoded METAR);
 - a streaming **anomaly detector** raises emergency squawk, rapid-descent, holding-pattern
   and signal-loss alerts (the latter calibrated on real data: it waits for two missing
   snapshots and only runs with authenticated polling);

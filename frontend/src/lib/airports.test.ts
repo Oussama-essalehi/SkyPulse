@@ -31,8 +31,8 @@ describe("airports", () => {
   });
 
   it("shows large airports first, smaller ones when zooming in", () => {
-    expect(visibleAirports(airports, 2).length).toBe(0);
-    expect(visibleAirports(airports, 4).map((a) => a.icao)).toEqual(["EGLL", "LFLL", "LFPG"]);
+    expect(visibleAirports(airports, 4).length).toBe(0);
+    expect(visibleAirports(airports, 5).map((a) => a.icao)).toEqual(["EGLL", "LFLL", "LFPG"]);
     expect(visibleAirports(airports, 7).length).toBe(4);
     expect(visibleAirports(airports, 9).length).toBe(5);
   });

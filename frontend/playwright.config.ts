@@ -15,7 +15,6 @@ export default defineConfig({
     viewport: { width: 1440, height: 900 },
     timezoneId: "Europe/Paris",
     locale: "fr-FR",
-    colorScheme: "dark", // the site follows the system theme on a first visit
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
     // Behind a corporate / sandbox proxy (map tiles), keep the stack itself direct.

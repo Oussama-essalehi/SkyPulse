@@ -1,4 +1,11 @@
+import { greatCircle, haversineKm } from "./geo";
 import type { AirportInfo, FlightInfo } from "./types";
+
+/** API trail point: lon, lat, altitude (m), position time (epoch s). */
+export type TrailPoint = [number, number, number | null, number];
+
+/** Gap above which the departure airport is linked to the start of the observed track. */
+const LINK_MIN_KM = 20;
 
 export function duration(seconds: number): string {
   const total = Math.max(0, Math.round(seconds / 60));
@@ -27,24 +34,33 @@ export function airportLabel(airport: AirportInfo | null): { code: string; place
   return { code: airport.iata ?? airport.icao, place };
 }
 
-/** One sentence per source, so the user knows how much to trust each piece. */
-export function sourceNotes(flight: FlightInfo): string[] {
-  const notes: string[] = [];
-  if (flight.departure_source === "reconstructed") notes.push("Décollage observé par SkyRadar.");
-  if (flight.arrival_source === "route_db" || flight.departure_source === "route_db")
-    notes.push(
-      "Route publiée pour ce callsign (base adsbdb), cohérente avec la position et le cap.",
-    );
-  if (flight.arrival_source === "history") {
-    const stats =
-      flight.route_flights !== null
-        ? ` (${flight.route_flights} vols, ${Math.round((flight.route_share ?? 0) * 100)} %)`
-        : "";
-    notes.push(`Destination habituelle de ce callsign dans l'historique${stats}.`);
+/**
+ * What to draw for the selected aircraft:
+ * - `observed`: its positions as received, from the observed take-off when there is one
+ *   (earlier points belong to the previous flight of the same aircraft);
+ * - `fromDeparture`: when the track starts away from the departure airport (aircraft first
+ *   seen in flight, or SkyRadar started after the take-off), the great circle from the
+ *   airport to the first observed point, drawn dashed: estimated, not observed.
+ */
+export function flightPath(
+  trail: TrailPoint[] | null,
+  flight: FlightInfo | null | undefined,
+  current: [number, number] | null,
+): { observed: [number, number][]; fromDeparture: [number, number][] | null } {
+  let points = trail ?? [];
+  const takeoff = flight?.departure_time_estimated ? null : flight?.departure_time;
+  if (takeoff) points = points.filter((p) => p[3] >= takeoff - 120);
+  const observed = points.map((p): [number, number] => [p[0], p[1]]);
+  if (current) observed.push(current);
+  const start = observed[0];
+  const dep = flight?.departure;
+  if (!start || !dep || dep.latitude === null || dep.longitude === null) {
+    return { observed, fromDeparture: null };
   }
-  if (flight.departure_time_estimated)
-    notes.push("Heure de départ estimée d'après la distance déjà parcourue.");
-  if (flight.rejected_route)
-    notes.push(`Route publiée ${flight.rejected_route} ignorée : incohérente avec la position.`);
-  return notes;
+  const origin: [number, number] = [dep.longitude, dep.latitude];
+  const km = haversineKm(origin[0], origin[1], start[0], start[1]);
+  if (km < LINK_MIN_KM) return { observed, fromDeparture: null };
+  // Dense enough for the dashes (one every ~15 km) and to follow the curvature.
+  const n = Math.min(200, Math.max(4, Math.ceil(km / 15)));
+  return { observed, fromDeparture: greatCircle(origin, start, n) };
 }
