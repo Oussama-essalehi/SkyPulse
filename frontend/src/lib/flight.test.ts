@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { airportLabel, clock, duration, flightPath, placeName, type TrailPoint } from "./flight";
+import {
+  airportLabel,
+  clock,
+  duration,
+  flightBounds,
+  flightPath,
+  placeName,
+  type TrailPoint,
+} from "./flight";
 import { haversineKm } from "./geo";
 import type { FlightInfo } from "./types";
 
@@ -123,6 +131,37 @@ describe("flightPath", () => {
         [0.8, 47.5],
       ],
       fromDeparture: null,
+      toArrival: null,
     });
+  });
+
+  it("plans the rest of the route to the destination", () => {
+    const orly = { ...tarbes, icao: "LFPO", iata: "ORY", latitude: 48.72, longitude: 2.38 };
+    const path = flightPath(trail, { ...base, departure: tarbes, arrival: orly }, [1.2, 48.2]);
+    const rest = path.toArrival!;
+    expect(rest[0]).toEqual([1.2, 48.2]);
+    expect(rest[rest.length - 1][0]).toBeCloseTo(2.38, 6);
+    // Already at the destination: nothing left to draw.
+    expect(flightPath(trail, { ...base, arrival: orly }, [2.38, 48.7]).toArrival).toBeNull();
+  });
+
+  it("frames the whole flight, except across the antimeridian", () => {
+    expect(
+      flightBounds([
+        [0, 43.18],
+        [1.2, 48.2],
+        [2.38, 48.72],
+      ]),
+    ).toEqual([
+      [0, 43.18],
+      [2.38, 48.72],
+    ]);
+    expect(
+      flightBounds([
+        [170, 50],
+        [-170, 55],
+      ]),
+    ).toBeNull();
+    expect(flightBounds([])).toBeNull();
   });
 });

@@ -74,5 +74,8 @@ export function greatCircle(
     const z = a * Math.sin(p1) + b * Math.sin(p2);
     points.push([Math.atan2(y, x) / DEG, Math.atan2(z, Math.sqrt(x * x + y * y)) / DEG]);
   }
+  // Exact ends (no rounding drift): the line meets the airport and the aircraft.
+  points[0] = from;
+  points[n - 1] = to;
   return points;
 }
