@@ -113,6 +113,11 @@ services:
       SKYRADAR_MARTS_ROOT: /data/marts
       # Published route of a callsign (aircraft card): adsbdb, or "off" (offline stack).
       ROUTE_LOOKUP: ${ROUTE_LOOKUP:-adsbdb}
+      # Public deployment guards (per client; the budget caps all assistant calls).
+      API_RATE_ASSISTANT: ${API_RATE_ASSISTANT:-5/minute,40/day}
+      API_ASSISTANT_BUDGET: ${API_ASSISTANT_BUDGET:-300/day}
+      API_RATE_AIRCRAFT: ${API_RATE_AIRCRAFT:-60/minute}
+      API_MAX_WS_PER_CLIENT: ${API_MAX_WS_PER_CLIENT:-4}
     volumes:
       # Routes and ETA model from the analytics layer (empty in the demo profile).
       - marts:/data/marts:ro

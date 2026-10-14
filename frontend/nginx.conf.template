@@ -14,6 +14,15 @@ server {
     # Re-resolve the API host periodically (Docker DNS): a recreated API container
     # gets a new IP and a statically resolved upstream would answer 502.
     resolver ${NGINX_RESOLVER} valid=10s ipv6=off;
+
+    # Real client address when a reverse proxy (Caddy in deploy/) sits in front: trust
+    # X-Forwarded-For only from private networks. The API rate-limits per client.
+    set_real_ip_from 10.0.0.0/8;
+    set_real_ip_from 172.16.0.0/12;
+    set_real_ip_from 192.168.0.0/16;
+    set_real_ip_from fc00::/7;
+    real_ip_header X-Forwarded-For;
+    real_ip_recursive on;
     set $api_upstream ${API_UPSTREAM};
 
     # API + WebSocket reverse proxy: the browser only talks to this origin.
@@ -25,6 +34,7 @@ server {
         proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_read_timeout 1h;
     }
 

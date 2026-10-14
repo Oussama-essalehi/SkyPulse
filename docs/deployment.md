@@ -17,11 +17,42 @@ cp .env.example .env
 docker compose -f docker-compose.yml -f deploy/compose.prod.yml --profile demo up -d --build --wait
 ```
 
-- Seul Caddy expose des ports (80/443) ; le frontend proxifie `/api` (REST + WebSocket)
-  vers l'API sur le réseau Docker : une seule origine, pas de CORS.
+- Seul Caddy expose des ports (80/443) : tous les autres services (API, Redpanda, stockage
+  objet, Dagster, MLflow, Superset…) ne sont joignables que sur le réseau Docker. Le
+  frontend proxifie `/api` (REST + WebSocket) vers l'API : une seule origine, pas de CORS.
 - Démo sans quota : `SOURCE=replay` dans `.env` (fichier `data/replay/replay.parquet`
   enregistré avec `make record`, ou trafic synthétique s'il est absent).
-- Le profil complet sur la même VM (8 Go) : `--profile full` à la place de `--profile demo`.
+- **Profil complet** sur la même VM (8 Go), avec les outils d'administration derrière un
+  mot de passe :
+  ```bash
+  # DNS : enregistrement générique *.radar.example.com vers la VM, en plus de radar.example.com
+  docker run --rm caddy:2.8-alpine caddy hash-password --plaintext 'mot-de-passe-admin'
+  # .env : SKYRADAR_CADDYFILE=Caddyfile.full, ADMIN_USER=admin,
+  #        ADMIN_PASSWORD_HASH='$2a$14$...'   (entre apostrophes : le hash contient des $)
+  docker compose -f docker-compose.yml -f deploy/compose.prod.yml --profile full up -d --build --wait
+  ```
+  La carte reste publique sur `radar.example.com` ; `dagster.`, `mlflow.`, `superset.`,
+  `kafka.` (console Redpanda) et `grafana.` demandent le mot de passe (authentification
+  HTTP de Caddy ; Superset garde en plus son propre login).
+
+### Protections d'une démo publique
+
+| Risque | Protection | Réglage (`.env`) |
+|---|---|---|
+| Coût de l'assistant (chaque question appelle un LLM) | 5 questions / min et 40 / jour par client, **300 / jour au total** | `API_RATE_ASSISTANT`, `API_ASSISTANT_BUDGET` |
+| Clics en rafale sur les avions (une recherche de route par clic) | 60 fiches / min par client | `API_RATE_AIRCRAFT` |
+| Connexions WebSocket ouvertes en masse | 4 par client | `API_MAX_WS_PER_CLIENT` |
+| Outils d'administration sans authentification | Ports fermés, accès par Caddy avec mot de passe | `ADMIN_USER`, `ADMIN_PASSWORD_HASH` |
+
+Le client est identifié par son adresse IP réelle : Caddy remplace tout `X-Forwarded-For`
+envoyé par le navigateur, nginx ne fait confiance qu'aux proxys des réseaux privés, et l'API
+n'accepte l'en-tête `X-Real-IP` (ou `Fly-Client-IP` sur Fly.io) que d'un pair privé. Les
+compteurs sont en mémoire (une seule instance d'API) et repartent à zéro au redémarrage.
+
+Vérifié en local avec `SKYRADAR_DOMAIN=localhost` (certificat interne de Caddy) : seuls les
+ports 80/443 sont publiés, les sous-domaines d'administration répondent 401 sans mot de
+passe, et la 61e fiche d'avion dans la minute répond 429, même avec un `X-Forwarded-For`
+différent à chaque requête.
 
 ## Option B — hébergement séparé (Cloudflare Pages + Fly.io + Kafka managé)
 
