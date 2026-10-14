@@ -17,6 +17,10 @@ sources:
             description: Unix time of the source snapshot.
       - name: alerts
         description: Alert lifecycle events published by the anomaly detector.
+      - name: upper_winds
+        description: >
+          250 hPa winds (Open-Meteo) on a 10 degree grid, hourly, fetched once a day by
+          the Dagster asset lake/upper_winds (yesterday + today per fetch).
 
   - name: reference
     description: Reference data downloaded by `make seed` (OurAirports, public domain).

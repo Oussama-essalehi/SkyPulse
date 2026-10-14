@@ -14,8 +14,10 @@ from __future__ import annotations
 import argparse
 import csv
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 from pyarrow import fs as pafs
 
@@ -147,6 +149,34 @@ def write_airlines(path: Path) -> None:
             writer.writerow([i, name, "\\N", code[:2], code, name.upper(), country, "Y"])
 
 
+def write_upper_winds(root: Path, start_time: int, minutes: int) -> None:
+    """Open-Meteo layout (see skyradar_orchestration.weather): a westerly jet over Europe."""
+    first = start_time - start_time % 3600
+    hours = [
+        datetime.fromtimestamp(t, tz=UTC).replace(tzinfo=None)
+        for t in range(first, start_time + minutes * 60 + 3600, 3600)
+    ]
+    rows = [
+        (lat, lon, hour, 20.0 + lat / 2, 270.0, float(start_time))
+        for lat in range(30, 71, 10)
+        for lon in range(-20, 41, 10)
+        for hour in hours
+    ]
+    names = [
+        "grid_lat",
+        "grid_lon",
+        "valid_time",
+        "wind_speed_ms",
+        "wind_direction_deg",
+        "fetched_at",
+    ]
+    table = pa.table(dict(zip(names, zip(*rows, strict=True), strict=True)))
+    day = hours[0].strftime("%Y-%m-%d")
+    target = root / "raw" / "upper_winds" / f"date={day}" / "hour=00" / "winds.parquet"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(table, target)
+
+
 def build(root: Path, minutes: int, start_time: int) -> None:
     if root.exists():
         shutil.rmtree(root)
@@ -185,6 +215,7 @@ def build(root: Path, minutes: int, start_time: int) -> None:
     write_airports(root / "reference" / "airports.csv")
     write_aircraft_reference(root / "reference", sorted({s.icao24 for s in states}))
     write_airlines(root / "reference" / "airlines.dat")
+    write_upper_winds(root, start_time, minutes)
     print(f"Test lake ready in {root} ({len(states)} states, {alert_offset} alert events)")
 
 

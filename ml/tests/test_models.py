@@ -151,3 +151,24 @@ def test_isolation_forest_flags_circling_flight(tmp_path: Path) -> None:
     assert top["flight_id"] == "f0"
     assert top["is_outlier"]
     assert "taux de virage" in top["explanation"] or "rectitude" in top["explanation"]
+
+
+def test_eta_wind_feature_is_measured_by_ablation(tmp_path: Path) -> None:
+    """Wind ahead differs from the wind already in the ground speed: the model needs it."""
+    features = make_eta_features()
+    rng = np.random.default_rng(3)
+    per_flight = {f: rng.uniform(-40, 40) for f in features["flight_id"].unique()}
+    features["tailwind_ms"] = features["flight_id"].map(per_flight)
+    features["target_seconds"] *= 1 - features["tailwind_ms"] / 400
+    write_parquet_atomic(features, tmp_path / "ml_eta_features.parquet")
+    result = eta.train(tmp_path, min_flights=50, params={"n_estimators": 150})
+    assert result.metrics["wind_coverage"] == 1.0
+    assert result.metrics["mae_min"] < result.metrics["mae_min_without_wind"]
+
+
+def test_eta_without_weather_data(tmp_path: Path) -> None:
+    write_parquet_atomic(make_eta_features(), tmp_path / "ml_eta_features.parquet")
+    result = eta.train(tmp_path, min_flights=50, params={"n_estimators": 50})
+    assert result.status == "trained"
+    assert result.metrics["wind_coverage"] == 0.0
+    assert "mae_min_without_wind" not in result.metrics

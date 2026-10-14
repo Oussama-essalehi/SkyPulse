@@ -13,6 +13,10 @@ models:
       - name: heading_alignment
         data_tests:
           - value_between: {arguments: {min_value: -1.0001, max_value: 1.0001}}
+      - name: tailwind_ms
+        description: 250 hPa tail-wind component along the track (m/s), NULL without weather.
+        data_tests:
+          - value_between: {arguments: {min_value: -150, max_value: 150}}
   - name: ml_flight_features
     description: Trajectory features per flight (Isolation Forest input).
     columns:
