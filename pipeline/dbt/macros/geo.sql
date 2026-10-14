@@ -30,3 +30,22 @@
         - sin(radians({{ lat1 }})) * cos(radians({{ lat2 }})) * cos(radians(({{ lon2 }}) - ({{ lon1 }})))
     )) + 360) % 360)
 {%- endmacro %}
+
+
+{# Cell of the 10 degree wind grid (Open-Meteo fetch, latitudes -40..70). #}
+{% macro wind_grid_lat(lat) -%}
+    cast(least(70, greatest(-40, round({{ lat }} / 10) * 10)) as smallint)
+{%- endmacro %}
+
+{% macro wind_grid_lon(lon) -%}
+    cast(case when round({{ lon }} / 10) * 10 >= 180 then -180
+              else round({{ lon }} / 10) * 10 end as smallint)
+{%- endmacro %}
+
+{#
+  Tail-wind component (m/s, > 0 pushes the aircraft) of a wind blowing FROM
+  `direction` (meteorological convention) for an aircraft on ground track `track`.
+#}
+{% macro tailwind_ms(speed, direction, track) -%}
+    (-({{ speed }}) * cos(radians(({{ track }}) - ({{ direction }}))))
+{%- endmacro %}

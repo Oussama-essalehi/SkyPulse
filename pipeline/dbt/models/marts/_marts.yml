@@ -160,3 +160,8 @@ models:
       - unique_combination:
           arguments:
             columns: [hour, airline_icao]
+
+  - name: fct_upper_winds
+    description: >
+      Last 48 h of the 250 hPa wind grid (Open-Meteo); the API derives the tail-wind
+      feature of live aircraft from it.

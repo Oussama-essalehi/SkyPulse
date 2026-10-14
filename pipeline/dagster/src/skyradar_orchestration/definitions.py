@@ -25,7 +25,7 @@ from dagster_dbt import DbtCliResource, DbtProject, dbt_assets
 from skyradar_ml import endpoints, eta, forecast, outliers
 from skyradar_ml.marts import read_mart
 from skyradar_ml.reconstruction import track_reconstruction_quality
-from skyradar_orchestration import alerts, compaction
+from skyradar_orchestration import alerts, compaction, weather
 from skyradar_orchestration.quality import build_soda_checks
 
 DBT_PROJECT_DIR = Path(os.getenv("DBT_PROJECT_DIR", Path(__file__).parents[3] / "dbt"))
@@ -34,6 +34,7 @@ dbt_project.prepare_if_dev()
 
 RAW_STATES = AssetKey(["lake", "aircraft_states"])
 RAW_ALERTS = AssetKey(["lake", "alerts"])
+RAW_WINDS = AssetKey(["lake", "upper_winds"])
 
 # The raw lake is written continuously by the streaming sink (outside Dagster):
 # declared as external assets so the lineage starts at the Parquet files.
@@ -53,6 +54,24 @@ raw_lake = [
         kinds={"parquet", "s3"},
     ),
 ]
+
+
+@asset(
+    key=RAW_WINDS,
+    group_name="lake",
+    kinds={"python", "parquet"},
+    description="250 hPa winds on a 10 degree grid (Open-Meteo), fetched once a day: "
+    "tail-wind feature of the ETA model.",
+)
+def upper_winds(context: AssetExecutionContext) -> MaterializeResult:
+    report = weather.update()
+    if report.status == "failed":  # weather is optional: never block the dbt run
+        context.log.warning(report.reason)
+    else:
+        context.log.info(f"upper winds: {report.status} {report.reason} {report.rows} rows")
+    return MaterializeResult(
+        metadata=_meta({"status": report.status, "rows": report.rows, "reason": report.reason})
+    )
 
 
 @dbt_assets(manifest=dbt_project.manifest_path, project=dbt_project)
@@ -223,12 +242,13 @@ def lake_compaction(context: AssetExecutionContext) -> MaterializeResult:
 dbt_hourly_job = define_asset_job(
     "dbt_hourly",
     selection=(
-        AssetSelection.assets(skyradar_dbt)
+        AssetSelection.assets(upper_winds, skyradar_dbt)
         | AssetSelection.checks(*soda_checks)
         | AssetSelection.groups("ml_scoring")
     ),
-    description="Soda on the raw lake, dbt build (+ tests), Soda on marts, then scoring: "
-    "traffic forecast, trajectory outliers and diversion alerts.",
+    description="Upper winds (daily), Soda on the raw lake, dbt build (+ tests), Soda on "
+    "marts, then scoring: traffic forecast, trajectory outliers, endpoint clusters and "
+    "diversion alerts.",
 )
 ml_daily_job = define_asset_job(
     "ml_daily",
@@ -245,6 +265,7 @@ maintenance_job = define_asset_job(
 defs = Definitions(
     assets=[
         *raw_lake,
+        upper_winds,
         skyradar_dbt,
         flight_reconstruction_quality,
         eta_model,

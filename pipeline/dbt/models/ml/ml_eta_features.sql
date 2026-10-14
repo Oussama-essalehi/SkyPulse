@@ -20,6 +20,10 @@ positions as (
     where not on_ground
 ),
 
+winds as (
+    select * from {{ ref('stg_upper_winds') }}
+),
+
 features as (
     select
         p.flight_id,
@@ -38,10 +42,17 @@ features as (
             as heading_alignment,
         hour(p.position_ts) as hour_utc,
         isodow(p.position_ts) as day_of_week,
-        date_diff('second', f.departure_time, p.position_ts) / 60.0 as elapsed_min
+        date_diff('second', f.departure_time, p.position_ts) / 60.0 as elapsed_min,
+        -- Wind at cruise level along the track (NULL without weather data).
+        {{ tailwind_ms('w.wind_speed_ms', 'w.wind_direction_deg', 'coalesce(p.track_deg, 0)') }}
+            as tailwind_ms
     from positions as p
     inner join flights as f using (flight_id)
     inner join airports as a on a.airport_icao = f.arrival_airport
+    left join winds as w
+        on w.grid_lat = {{ wind_grid_lat('p.latitude') }}
+        and w.grid_lon = {{ wind_grid_lon('p.longitude') }}
+        and w.hour = date_trunc('hour', p.position_ts)
 )
 
 select *

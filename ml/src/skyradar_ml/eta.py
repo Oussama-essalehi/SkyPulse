@@ -12,6 +12,8 @@
 * Metrics (MAE in minutes, MAPE) of both the model and the baseline go to MLflow, the
   model to the MLflow registry (``skyradar-eta``) and, for low-latency serving, to
   ``<marts>/models/eta_model.txt`` + ``eta_model.json`` read by the API.
+* **Wind ablation**: the same model is also trained without ``tailwind_ms``; both MAEs
+  go to MLflow (``mae_min_without_wind``), so the weather feature has to earn its place.
 * **Promotion gate**: a model that does not beat the baseline on the test set is logged
   but not served; a previously served model is withdrawn and the API falls back to the
   naive estimate.
@@ -42,6 +44,9 @@ NUMERIC_FEATURES = [
     "hour_utc",
     "day_of_week",
     "elapsed_min",
+    # 250 hPa tail wind along the track (Open-Meteo); NaN without weather data,
+    # which LightGBM handles natively.
+    "tailwind_ms",
 ]
 CATEGORICAL_FEATURE = "arrival_airport_code"
 FEATURES = [*NUMERIC_FEATURES, CATEGORICAL_FEATURE]
@@ -92,6 +97,8 @@ def _metrics(y: np.ndarray, pred: np.ndarray, prefix: str) -> dict[str, float]:
 def prepare(df: pd.DataFrame, codes: dict[str, int]) -> pd.DataFrame:
     """Add the baseline, the encoded airport and the correction-ratio target."""
     out = df.copy()
+    if "tailwind_ms" not in out:  # marts built before the weather feature existed
+        out["tailwind_ms"] = np.nan
     out[CATEGORICAL_FEATURE] = out["arrival_airport"].map(codes).fillna(-1).astype("int32")
     naive = naive_eta_seconds(
         out["remaining_km"].to_numpy(dtype=float), out["velocity_ms"].to_numpy(dtype=float)
@@ -102,9 +109,11 @@ def prepare(df: pd.DataFrame, codes: dict[str, int]) -> pd.DataFrame:
     return out
 
 
-def predict_seconds(model: Any, frame: pd.DataFrame) -> np.ndarray:
+def predict_seconds(
+    model: Any, frame: pd.DataFrame, features: list[str] | None = None
+) -> np.ndarray:
     """ETA = baseline x learned correction."""
-    ratio = np.clip(model.predict(frame[FEATURES]), *RATIO_CLIP)
+    ratio = np.clip(model.predict(frame[features or FEATURES]), *RATIO_CLIP)
     return np.asarray(frame["naive_eta_min"].to_numpy(dtype=float) * 60 * ratio)
 
 
@@ -158,6 +167,16 @@ def train(
     metrics = {**_metrics(y, pred, ""), **_metrics(y, base, "baseline_")}
     metrics["mae_improvement_pct"] = 100 * (1 - metrics["mae_min"] / metrics["baseline_mae_min"])
     metrics["test_rows"] = float(len(test_df))
+    metrics["wind_coverage"] = float(df["tailwind_ms"].notna().mean())
+    if metrics["wind_coverage"] > 0:
+        no_wind = [f for f in FEATURES if f != "tailwind_ms"]
+        ablation = lgb.LGBMRegressor(**hyper)
+        ablation.fit(
+            train_df[no_wind], train_df["target_ratio"], categorical_feature=[CATEGORICAL_FEATURE]
+        )
+        metrics["mae_min_without_wind"] = _metrics(
+            y, predict_seconds(ablation, test_df, no_wind), ""
+        )["mae_min"]
 
     model_dir = root / "models"
     promoted = should_promote(metrics)

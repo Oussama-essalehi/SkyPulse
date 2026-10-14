@@ -63,6 +63,23 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * EARTH_RADIUS_KM * math.asin(min(1.0, math.sqrt(a)))
 
 
+def _round_half_away(x: float) -> float:
+    """SQL ``round()`` (half away from zero), unlike Python's banker's rounding."""
+    return math.copysign(math.floor(abs(x) + 0.5), x)
+
+
+def wind_cell(lat: float, lon: float) -> tuple[int, int]:
+    """10 degree wind grid cell; mirrors the wind_grid_lat / wind_grid_lon dbt macros."""
+    grid_lat = int(min(70, max(-40, _round_half_away(lat / 10) * 10)))
+    grid_lon = int(_round_half_away(lon / 10) * 10)
+    return grid_lat, -180 if grid_lon >= 180 else grid_lon
+
+
+def tailwind_ms(speed: float, direction: float, track: float) -> float:
+    """Tail-wind component of a wind blowing FROM ``direction``; mirrors the dbt macro."""
+    return -speed * math.cos(math.radians(track - direction))
+
+
 def bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dl = math.radians(lon2 - lon1)
@@ -109,6 +126,8 @@ class Enrichment:
     current_flights: dict[str, tuple[str, float]] = field(default_factory=dict)
     model: EtaModel | None = None
     airlines: dict[str, str] = field(default_factory=dict)
+    # (grid_lat, grid_lon, hour epoch) -> (speed m/s, direction from, degrees)
+    winds: dict[tuple[int, int, int], tuple[float, float]] = field(default_factory=dict)
     _registry_cache: dict[str, dict[str, Any] | None] = field(default_factory=dict)
     _signature: tuple[float, ...] = ()
     _checked_at: float = 0.0
@@ -123,6 +142,7 @@ class Enrichment:
             self.root / "models" / "eta_model.json",
             self.root / "dim_airlines.parquet",
             self.root / "dim_aircraft_registry.parquet",
+            self.root / "fct_upper_winds.parquet",
         ]
 
     def refresh(self, force: bool = False) -> None:
@@ -151,8 +171,17 @@ class Enrichment:
             meta_file,
             airlines_file,
             _registry_file,
+            winds_file,
         ) = self._files()
         self._registry_cache = {}
+        if winds_file.exists():
+            self.winds = {
+                (int(lat), int(lon), int(epoch)): (float(speed), float(direction))
+                for lat, lon, epoch, speed, direction in self._query(
+                    "select grid_lat, grid_lon, epoch(hour), wind_speed_ms, wind_direction_deg "
+                    f"from read_parquet('{winds_file}')"
+                )
+            }
         if airlines_file.exists():
             self.airlines = dict(
                 self._query(
@@ -197,6 +226,7 @@ class Enrichment:
             routes=len(self.routes),
             current_flights=len(self.current_flights),
             airlines=len(self.airlines),
+            wind_cells=len(self.winds),
             eta_model=self.model is not None,
         )
 
@@ -321,6 +351,13 @@ class Enrichment:
             "model_mae_min": round(self.model.metrics.get("mae_min", 0), 2) if self.model else None,
         }
 
+    def _tailwind(self, state: StateVector, position_time: float) -> float:
+        cell = wind_cell(state.latitude, state.longitude)
+        wind = self.winds.get((*cell, int(position_time // 3600 * 3600)))
+        if wind is None:
+            return np.nan
+        return tailwind_ms(wind[0], wind[1], state.true_track or 0.0)
+
     def _predict(
         self,
         state: StateVector,
@@ -350,6 +387,7 @@ class Enrichment:
             "hour_utc": moment.hour,
             "day_of_week": moment.isoweekday(),
             "elapsed_min": (position_time - departure_time) / 60 if departure_time else np.nan,
+            "tailwind_ms": self._tailwind(state, position_time),
             "arrival_airport_code": self.model.airport_codes.get(airport.icao, -1),
         }
         row = np.array([[values[f] for f in self.model.features]], dtype=float)

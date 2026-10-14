@@ -5,6 +5,7 @@ from pathlib import Path
 import duckdb
 import lightgbm as lgb
 import numpy as np
+import pytest
 
 from skyradar_api.enrichment import Enrichment, haversine_km
 from skyradar_common.models import StateVector
@@ -180,3 +181,38 @@ def test_aircraft_without_reference_marts(tmp_path: Path) -> None:
         "airline_name": None,
         "in_registry": False,
     }
+
+
+def test_wind_cell_mirrors_the_dbt_macros() -> None:
+    from skyradar_api.enrichment import wind_cell
+
+    points = [(48.6, 2.3), (45.0, 5.0), (-45.0, 175.0), (75.0, -179.9), (35.0, -15.0), (0.0, 0.0)]
+    for lat, lon in points:
+        expected = duckdb.sql(
+            f"select cast(least(70, greatest(-40, round({lat} / 10) * 10)) as smallint), "
+            f"cast(case when round({lon} / 10) * 10 >= 180 then -180 "
+            f"else round({lon} / 10) * 10 end as smallint)"
+        ).fetchone()
+        assert wind_cell(lat, lon) == expected, (lat, lon)
+
+
+def test_tailwind_from_the_wind_mart(tmp_path: Path) -> None:
+    from skyradar_api.enrichment import tailwind_ms
+
+    now = int(time.time())
+    hour = now // 3600 * 3600
+    write(
+        tmp_path,
+        "fct_upper_winds",
+        f"select 50::smallint grid_lat, 0::smallint grid_lon, "
+        f"make_timestamp({hour}::bigint * 1000000) as hour, "
+        "40.0 wind_speed_ms, 270.0 wind_direction_deg",
+    )
+    enrichment = Enrichment(root=tmp_path)
+    enrichment.refresh(force=True)
+    east = state(latitude=48.8, longitude=2.3, true_track=90.0)
+    west = state(latitude=48.8, longitude=2.3, true_track=270.0)
+    assert enrichment._tailwind(east, now) == pytest.approx(40.0)  # westerly jet, eastbound
+    assert enrichment._tailwind(west, now) == pytest.approx(-40.0)
+    assert np.isnan(enrichment._tailwind(state(latitude=10.0, longitude=100.0), now))
+    assert tailwind_ms(10, 0, 90) == pytest.approx(0, abs=1e-9)  # pure crosswind
