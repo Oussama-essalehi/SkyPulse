@@ -8,7 +8,9 @@ import { Legend } from "./components/Legend";
 import { type FlyTarget, MapView } from "./components/MapView";
 import { type PanelName, TopBar } from "./components/TopBar";
 import { api } from "./lib/api";
+import type { Theme } from "./lib/colors";
 import { DEFAULT_FILTERS } from "./lib/labels";
+import { applyTheme, initialTheme } from "./lib/theme";
 import type { AircraftDetail, Filters } from "./lib/types";
 import { useLive } from "./lib/useLive";
 
@@ -22,6 +24,15 @@ export default function App() {
   const [detail, setDetail] = useState<AircraftDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [flyTo, setFlyTo] = useState<FlyTarget | null>(null);
+  const [theme, setTheme] = useState<Theme>(() => {
+    const initial = initialTheme();
+    applyTheme(initial); // before the first paint: no flash of the wrong theme
+    return initial;
+  });
+  const changeTheme = useCallback((next: Theme) => {
+    applyTheme(next, true);
+    setTheme(next);
+  }, []);
 
   // Fetch the aircraft card (trail, alerts, reconstructed flight) and keep it fresh.
   useEffect(() => {
@@ -79,6 +90,7 @@ export default function App() {
         alerts={alerts}
         trail={trail}
         flyTo={flyTo}
+        theme={theme}
       />
       <TopBar
         store={store}
@@ -89,6 +101,8 @@ export default function App() {
         panel={panel}
         onPanel={setPanel}
         onPick={pick}
+        theme={theme}
+        onTheme={changeTheme}
       />
       <AlertBanner alerts={alerts} onPick={pick} />
       {panel && (
@@ -111,7 +125,7 @@ export default function App() {
           onClose={() => setSelected(null)}
         />
       )}
-      <Legend />
+      <Legend theme={theme} />
       <footer className="attribution">
         Données ADS-B ©{" "}
         <a href="https://opensky-network.org" target="_blank" rel="noreferrer">

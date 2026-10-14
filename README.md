@@ -16,7 +16,9 @@ en suit plus de 11 000 ([capture](docs/images/map.png)).</sub>
 |---|---|
 | ![AFR090, Boeing 777-300ER d'Air France en approche de Miami : fiche et trace](docs/images/aircraft-panel.png) | <img src="docs/images/mobile.png" width="220" alt="Version mobile"> |
 
-<sub>Une alerte détectée en direct (descente rapide) : [capture](docs/images/aircraft-alert.png).</sub>
+<sub>Une alerte détectée en direct (descente rapide) : [capture](docs/images/aircraft-alert.png).
+Deux thèmes, **sombre** et **gris** clair (bouton en haut à droite, choix mémorisé, thème
+du système par défaut) : [capture du thème gris](docs/images/map-grey.png).</sub>
 
 ---
 
@@ -40,7 +42,7 @@ en suit plus de 11 000 ([capture](docs/images/map.png)).</sub>
 | **Reconstitution de vols** | Segmentation des trajectoires et rattachement des extrémités à l'aéroport le plus proche (OurAirports), en SQL, car l'ADS-B ne transporte ni origine ni destination ; **DBSCAN** des décollages / atterrissages hors référentiel (terrains, héliports) |
 | **Enrichissement** | **Base aéronefs OpenSky** (520 000 avions : immatriculation, type, opérateur), types OACI (Doc 8643 : catégorie de sillage), compagnies OpenFlights, **vent en altitude** Open-Meteo (250 hPa) |
 | **Détection d'anomalies** | En streaming : squawk 7500/7600/7700, descente rapide, **attente / tourne en rond**, **perte de signal en zone couverte** (position extrapolée + couverture des récepteurs). En batch : **déroutements** (destination habituelle du callsign) et vols atypiques (**Isolation Forest** expliqué) |
-| **Produit & front** | React + MapLibre + **deck.gl** sur buffers binaires, **interpolation sphérique** des positions, WebSocket au format colonne, responsive |
+| **Produit & front** | React + MapLibre + **deck.gl** sur buffers binaires, **interpolation sphérique** des positions, WebSocket au format colonne, responsive, thèmes sombre et gris (palette d'altitude contrôlée à 3:1 de contraste minimum sur chaque fond de carte) |
 | **BI** | **Superset** sur DuckDB : dashboards *Trafic aérien*, *Modèles ML* et *Compagnies et flotte* versionnés « as code » et importés au démarrage |
 | **Machine learning** | **ETA LightGBM** qui corrige une baseline physique (MAE comparée dans MLflow, barrière de promotion, servie par l'API), avec le vent arrière en altitude évalué par ablation ; **prévision du trafic** par zone (Holt-Winters contre naïf saisonnier) ; registry et historique des métriques dans **MLflow** ([ADR 0008](docs/adr/0008-ml-models.md)) |
 | **IA générative** | **Assistant en français** : boucle d'outils Claude (text-to-SQL + état en direct) ou modèle local Ollama, **garde-fous** sqlglot (SELECT seul, liste blanche, LIMIT forcé, timeout, DuckDB sans accès fichier), jeu d'évaluation de 22 questions suivi dans **MLflow** (précision par type, empreinte du prompt), **serveur MCP** pour Claude Desktop |
@@ -239,7 +241,8 @@ credentials, with a polling interval **derived from the daily credit quota**: 96
 
 - a **FastAPI** service keeps the live state in memory and streams column-oriented deltas over
   WebSocket to a **React + MapLibre + deck.gl** map, which renders 11k+ aircraft with
-  spherical dead-reckoning interpolation; the aircraft panel shows the departure airport,
+  spherical dead-reckoning interpolation (dark and light grey themes); the aircraft panel
+  shows the departure airport,
   the probable destination and an **ETA**, plus the airline, aircraft type and registration
   from the OpenSky aircraft database (520k aircraft) and OpenFlights;
 - a streaming **anomaly detector** raises emergency squawk, rapid-descent, holding-pattern
