@@ -1,4 +1,4 @@
-import { airportLabel, clock, duration, sourceNotes } from "../lib/flight";
+import { airportLabel, clock, duration } from "../lib/flight";
 import type { EtaInfo, FlightInfo } from "../lib/types";
 
 interface Props {
@@ -111,18 +111,6 @@ export function FlightSection({ flight, eta, onGround }: Props) {
           </div>
         )}
       </dl>
-      {eta && !onGround && (
-        <p className="muted small">
-          {eta.method === "lightgbm"
-            ? `ETA du modèle LightGBM (erreur moyenne ${eta.model_mae_min} min).`
-            : "ETA naïve : distance restante / vitesse sol."}
-        </p>
-      )}
-      {sourceNotes(flight).map((note) => (
-        <p key={note} className="muted small">
-          {note}
-        </p>
-      ))}
     </section>
   );
 }

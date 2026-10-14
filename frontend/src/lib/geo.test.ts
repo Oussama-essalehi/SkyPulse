@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { altitudeColor, GROUND_COLOR } from "./colors";
+import { altitudeColor, PALETTE } from "./colors";
 import { blendWeight, deadReckon, haversineKm, MAX_EXTRAPOLATION_S } from "./geo";
 import { AircraftStore } from "./store";
+import { DEFAULT_FILTERS } from "./labels";
 import type { SnapshotMessage } from "./types";
 
 describe("deadReckon", () => {
@@ -39,7 +40,7 @@ describe("blendWeight", () => {
 
 describe("altitudeColor", () => {
   it("uses the ground color on the ground", () => {
-    expect(altitudeColor(0, true)).toEqual(GROUND_COLOR);
+    expect(altitudeColor(0, true)).toEqual(PALETTE.ground);
   });
   it("interpolates between stops", () => {
     const c = altitudeColor(750, false);
@@ -51,6 +52,7 @@ const message = (
   type: "snapshot" | "delta",
   lon: number,
   removed: string[] = [],
+  onGround = false,
 ): SnapshotMessage => ({
   type,
   server_time: Date.now() / 1000,
@@ -69,7 +71,7 @@ const message = (
     velocity: [0],
     track: [90],
     vrate: [0],
-    on_ground: [0],
+    on_ground: [onGround ? 1 : 0],
     squawk: [null],
     time_position: [Date.now() / 1000],
     category: [null],
@@ -96,11 +98,30 @@ describe("AircraftStore", () => {
   it("builds binary render buffers honouring filters", () => {
     const store = new AircraftStore();
     store.apply(message("snapshot", 2));
-    const all = store.frame({ minAlt: 0, maxAlt: 15000, country: "", status: "all" }, null);
+    const all = store.frame(DEFAULT_FILTERS, null);
     expect(all.length).toBe(1);
     expect(all.positions[0]).toBeCloseTo(2, 4);
     expect(all.angles[0]).toBe(-90);
-    const none = store.frame({ minAlt: 0, maxAlt: 15000, country: "Spain", status: "all" }, null);
+    const none = store.frame({ ...DEFAULT_FILTERS, country: "Spain" }, null);
     expect(none.length).toBe(0);
+  });
+
+  it("hides aircraft on the ground as soon as a minimum altitude is set", () => {
+    const store = new AircraftStore();
+    store.apply(message("snapshot", 2, [], true));
+    const a = store.aircraft.get("abc123")!;
+    expect(store.matches(a, DEFAULT_FILTERS)).toBe(true);
+    expect(store.matches(a, { ...DEFAULT_FILTERS, minAlt: 500 })).toBe(false);
+    expect(store.matches(a, { ...DEFAULT_FILTERS, status: "ground" })).toBe(true);
+  });
+
+  it("keeps only the aircraft of the chosen airport", () => {
+    const store = new AircraftStore();
+    store.apply(message("snapshot", 2));
+    const a = store.aircraft.get("abc123")!;
+    const airport = { ...DEFAULT_FILTERS, status: "airport" as const, airport: "LFPG" };
+    expect(store.matches(a, airport)).toBe(false); // board not loaded yet
+    expect(store.matches(a, { ...airport, aircraft: new Set(["abc123"]) })).toBe(true);
+    expect(store.matches(a, { ...airport, aircraft: new Set(["def456"]) })).toBe(false);
   });
 });

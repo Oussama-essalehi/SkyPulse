@@ -1,4 +1,11 @@
-import type { AircraftDetail, AirportBoard, AirportColumns, Alert, AssistantAnswer } from "./types";
+import type {
+  AircraftDetail,
+  AirportBoard,
+  AirportColumns,
+  Alert,
+  AssistantAnswer,
+  WeatherResponse,
+} from "./types";
 
 /**
  * Base URL of the SkyRadar API. Defaults to the same-origin `/api` prefix
@@ -33,7 +40,9 @@ export const api = {
   aircraft: (icao24: string) => getJson<AircraftDetail>(`/aircraft/${icao24}`),
   alerts: () => getJson<Alert[]>("/alerts"),
   airports: () => getJson<AirportColumns>("/airports"),
-  airportBoard: (icao: string) => getJson<AirportBoard>(`/airports/${icao}/board`),
+  airportBoard: (icao: string, limit = 40) =>
+    getJson<AirportBoard>(`/airports/${icao}/board?limit=${limit}`),
+  airportWeather: (icao: string) => getJson<WeatherResponse>(`/airports/${icao}/weather`),
   ask: (question: string) =>
     getJson<AssistantAnswer>("/assistant/ask", {
       method: "POST",

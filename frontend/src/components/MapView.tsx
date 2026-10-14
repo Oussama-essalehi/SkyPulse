@@ -14,11 +14,12 @@ import {
   labelledAirports,
   visibleAirports,
 } from "../lib/airports";
-import { ALERT_COLORS, altitudeColor, palette, type Theme } from "../lib/colors";
+import { MAP_STYLE, paintBasemap } from "../lib/basemap";
+import { ALERT_COLORS, altitudeColor, PALETTE } from "../lib/colors";
+import { flightPath, type TrailPoint } from "../lib/flight";
 import { PLANE_ATLAS, PLANE_MAPPING } from "../lib/planeIcon";
 import type { AircraftStore, RenderBuffers } from "../lib/store";
-import { MAP_THEMES } from "../lib/theme";
-import type { Airport, Alert, Filters } from "../lib/types";
+import type { Airport, Alert, Filters, FlightInfo } from "../lib/types";
 
 setWorkerUrl(maplibreWorkerUrl);
 
@@ -37,9 +38,10 @@ interface Props {
   selected: string | null;
   onSelect: (icao24: string | null) => void;
   alerts: Alert[];
-  trail: [number, number, number | null, number][] | null;
+  trail: TrailPoint[] | null;
+  /** Flight of the selected aircraft: its track is drawn from the departure airport. */
+  flight: FlightInfo | null;
   flyTo: FlyTarget | null;
-  theme: Theme;
   airports: Airport[];
   selectedAirport: string | null;
   onSelectAirport: (icao: string) => void;
@@ -61,19 +63,23 @@ interface AlertPoint {
   icao24: string;
 }
 
-const TOOLTIP_STYLE: Record<Theme, Record<string, string>> = {
-  dark: { background: "rgba(8,13,22,.92)", color: "#e2e8f0", border: "1px solid #1e293b" },
-  grey: { background: "rgba(241,243,246,.96)", color: "#1f2933", border: "1px solid #c3cad4" },
+const TOOLTIP_STYLE = {
+  background: "rgba(222, 223, 217, 0.97)",
+  color: "#1c2023",
+  border: "1px solid #aeb2aa",
+  fontSize: "12px",
+  borderRadius: "6px",
 };
 
-/** Radar-style tint on top of the OpenFreeMap style of the theme. */
-function tintStyle(map: MapLibreMap, theme: Theme): void {
-  const { land, water } = MAP_THEMES[theme];
-  for (const layer of map.getStyle().layers ?? []) {
-    if (layer.type === "background") map.setPaintProperty(layer.id, "background-color", land);
-    if (layer.type === "fill" && layer.id.includes("water"))
-      map.setPaintProperty(layer.id, "fill-color", water);
-  }
+/** Icon sizes (px): the dark outline is the same plane drawn larger underneath. */
+const PLANE_SIZE = { size: 18, min: 9, max: 26 };
+const OUTLINE_PX = 5;
+
+/** Every other segment of a polyline: a dashed look without the deck.gl extensions. */
+function dashes(points: [number, number][]): { path: [number, number][] }[] {
+  const out: { path: [number, number][] }[] = [];
+  for (let i = 0; i + 1 < points.length; i += 2) out.push({ path: [points[i], points[i + 1]] });
+  return out;
 }
 
 export function MapView(props: Props) {
@@ -97,7 +103,7 @@ export function MapView(props: Props) {
     if (!container.current) return;
     const map = new MapLibreMap({
       container: container.current,
-      style: MAP_THEMES[propsRef.current.theme].style,
+      style: MAP_STYLE,
       center: [8, 46],
       zoom: 3.6,
       minZoom: 1.5,
@@ -107,7 +113,7 @@ export function MapView(props: Props) {
     });
     map.touchZoomRotate.disableRotation();
     map.addControl(new NavigationControl({ showCompass: false }), "bottom-right");
-    map.on("style.load", () => tintStyle(map, propsRef.current.theme));
+    map.on("style.load", () => paintBasemap(map));
     // Basemap tiles / style from a public CDN: an outage must not break the live map
     // (aircraft are drawn by deck.gl on their own canvas). Without a listener MapLibre
     // reports it as an error; the previous basemap simply stays.
@@ -122,28 +128,14 @@ export function MapView(props: Props) {
       getTooltip: ({ layer, index, object }: PickingInfo) => {
         if (layer?.id === "airports" && object) {
           const ap = object as Airport;
-          return {
-            text: `${airportCode(ap)} · ${ap.name}`,
-            style: {
-              ...TOOLTIP_STYLE[propsRef.current.theme],
-              fontSize: "12px",
-              borderRadius: "6px",
-            },
-          };
+          return { text: `${airportCode(ap)} · ${ap.name}`, style: TOOLTIP_STYLE };
         }
         if (layer?.id !== "aircraft" || index < 0) return null;
         const id = buffersRef.current?.ids[index];
         const a = id ? propsRef.current.store.aircraft.get(id) : undefined;
         if (!a) return null;
         const alt = a.onGround ? "au sol" : a.alt !== null ? `${Math.round(a.alt)} m` : "?";
-        return {
-          text: `${a.callsign ?? a.icao24} · ${alt}`,
-          style: {
-            ...TOOLTIP_STYLE[propsRef.current.theme],
-            fontSize: "12px",
-            borderRadius: "6px",
-          },
-        };
+        return { text: `${a.callsign ?? a.icao24} · ${alt}`, style: TOOLTIP_STYLE };
       },
     });
     map.addControl(overlay);
@@ -159,7 +151,7 @@ export function MapView(props: Props) {
       raf = requestAnimationFrame(render);
       if (time - last < FRAME_MS) return;
       last = time;
-      const { store, filters, selected, alerts, trail, onSelect } = propsRef.current;
+      const { store, filters, selected, alerts, trail, flight, onSelect } = propsRef.current;
       const { airports, selectedAirport, onSelectAirport } = propsRef.current;
       const key = zoomKey(map.getZoom());
       let cache = airportCache.current;
@@ -176,12 +168,13 @@ export function MapView(props: Props) {
       const highlighted = selectedAirport
         ? airports.find((a) => a.icao === selectedAirport)
         : undefined;
-      const colors = palette();
+      const colors = PALETTE;
       const buffers = store.frame(filters, selected);
       buffersRef.current = buffers;
       const now = store.now();
       const selectedAircraft = selected ? store.aircraft.get(selected) : undefined;
       const selectedPos = selectedAircraft ? store.position(selectedAircraft, now) : null;
+      const path = selectedPos ? flightPath(trail, flight, selectedPos) : null;
 
       const alertPoints: AlertPoint[] = [];
       for (const alert of alerts) {
@@ -211,9 +204,9 @@ export function MapView(props: Props) {
           radiusUnits: "pixels",
           stroked: true,
           filled: true,
-          getFillColor: colors.airportFill,
-          getLineColor: colors.airport,
-          getLineWidth: 1.5,
+          getFillColor: colors.airport,
+          getLineColor: colors.airportRing,
+          getLineWidth: 1,
           lineWidthUnits: "pixels",
           pickable: true,
           onClick: (info: PickingInfo) => {
@@ -236,7 +229,7 @@ export function MapView(props: Props) {
           fontWeight: 600,
           fontSettings: { sdf: true },
           outlineWidth: 3,
-          outlineColor: [...colors.airportFill, 220],
+          outlineColor: [...colors.airportRing, 220],
           pickable: false,
         }),
         highlighted
@@ -253,18 +246,32 @@ export function MapView(props: Props) {
               getLineColor: [...colors.selected, 255],
             })
           : null,
-        trail && selectedPos
-          ? new PathLayer({
-              id: "trail",
-              data: [{ path: [...trail.map((p) => [p[0], p[1]]), selectedPos] }],
-              getPath: (d: { path: number[][] }) => d.path as [number, number][],
-              getColor: palette().trail,
-              getWidth: 2,
-              widthUnits: "pixels",
-              jointRounded: true,
-              capRounded: true,
-            })
-          : null,
+        // Track of the selected aircraft: dashed from the departure airport to the first
+        // observed position (estimated), then solid (observed), on a dark casing.
+        ...(path
+          ? [
+              new PathLayer<{ path: [number, number][] }>({
+                id: "track-casing",
+                data: [{ path: path.observed }, ...dashes(path.fromDeparture ?? [])],
+                getPath: (d) => d.path,
+                getColor: colors.trailCasing,
+                getWidth: 5,
+                widthUnits: "pixels",
+                jointRounded: true,
+                capRounded: true,
+              }),
+              new PathLayer<{ path: [number, number][] }>({
+                id: "track",
+                data: [{ path: path.observed }, ...dashes(path.fromDeparture ?? [])],
+                getPath: (d) => d.path,
+                getColor: colors.trail,
+                getWidth: 2.5,
+                widthUnits: "pixels",
+                jointRounded: true,
+                capRounded: true,
+              }),
+            ]
+          : []),
         new ScatterplotLayer<AlertPoint>({
           id: "alerts",
           data: alertPoints,
@@ -283,6 +290,26 @@ export function MapView(props: Props) {
           pickable: false,
         }),
         new IconLayer({
+          id: "aircraft-outline",
+          data: {
+            length: buffers.length,
+            attributes: {
+              getPosition: { value: buffers.positions, size: 2 },
+              getAngle: { value: buffers.angles, size: 1 },
+            },
+          },
+          iconAtlas: PLANE_ATLAS,
+          iconMapping: PLANE_MAPPING,
+          getIcon: () => "plane",
+          getColor: [...colors.outline, 235],
+          getSize: PLANE_SIZE.size + OUTLINE_PX,
+          sizeUnits: "pixels",
+          sizeMinPixels: PLANE_SIZE.min + OUTLINE_PX,
+          sizeMaxPixels: PLANE_SIZE.max + OUTLINE_PX,
+          billboard: false,
+          pickable: false,
+        }),
+        new IconLayer({
           id: "aircraft",
           data: {
             length: buffers.length,
@@ -295,10 +322,10 @@ export function MapView(props: Props) {
           iconAtlas: PLANE_ATLAS,
           iconMapping: PLANE_MAPPING,
           getIcon: () => "plane",
-          getSize: 18,
+          getSize: PLANE_SIZE.size,
           sizeUnits: "pixels",
-          sizeMinPixels: 9,
-          sizeMaxPixels: 26,
+          sizeMinPixels: PLANE_SIZE.min,
+          sizeMaxPixels: PLANE_SIZE.max,
           billboard: false,
           pickable: true,
           onClick: (info: PickingInfo) => {
@@ -335,17 +362,6 @@ export function MapView(props: Props) {
       mapRef.current = null;
     };
   }, []);
-
-  // Theme switch: new basemap (deck.gl layers live on their own canvas and are kept).
-  const { theme } = props;
-  const appliedTheme = useRef(theme);
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || appliedTheme.current === theme) return;
-    appliedTheme.current = theme;
-    // No style diff: its failure would be an unhandled rejection, not an "error" event.
-    map.setStyle(MAP_THEMES[theme].style, { diff: false });
-  }, [theme]);
 
   const { flyTo } = props;
   useEffect(() => {
