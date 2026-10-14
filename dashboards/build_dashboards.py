@@ -39,6 +39,7 @@ DATASETS: dict[str, str | None] = {
     "ml_model_metrics": "trained_at",
     "ml_traffic_forecast": "hour",
     "ml_flight_anomaly_scores": "last_seen_ts",
+    "ml_endpoint_clusters": "last_seen_ts",
     "dim_aircraft": "last_seen_ts",
     "fct_airline_activity": "hour",
 }
@@ -353,6 +354,29 @@ ML_CHARTS: list[tuple[str, str, str, dict[str, Any], int, int]] = [
         5,
         55,
     ),
+    (
+        "endpoint_clusters",
+        "ml_endpoint_clusters",
+        "Terrains hors référentiel (DBSCAN des décollages / atterrissages)",
+        {
+            "viz_type": "table",
+            "query_mode": "raw",
+            "all_columns": [
+                "n_endpoints",
+                "n_aircraft",
+                "latitude",
+                "longitude",
+                "nearest_name",
+                "nearest_type",
+                "nearest_km",
+                "example_callsigns",
+            ],
+            "order_by_cols": [json.dumps(["n_endpoints", False])],
+            "row_limit": 25,
+        },
+        12,
+        50,
+    ),
 ]
 
 
@@ -554,7 +578,8 @@ ML_INTRO = """### SkyRadar — modèles de ML (suivis dans MLflow)
 sur les vols les plus récents (split temporel par vol). **Prévision** : Holt-Winters
 (saisonnalité 24 h) contre une baseline saisonnière naïve. **Isolation Forest** sur les
 caractéristiques de trajectoire, et **déroutements** (arrivée différente de la destination
-habituelle du callsign). Les modèles ne s'entraînent qu'au-delà d'un seuil d'historique.
+habituelle du callsign). **DBSCAN** regroupe les décollages et atterrissages situés loin
+de tout aéroport connu. Les modèles ne s'entraînent qu'au-delà d'un seuil d'historique.
 """
 
 FLEET_INTRO = """### Compagnies et flotte
@@ -587,6 +612,7 @@ DASHBOARDS: list[dict[str, Any]] = [
             ["eta_mae", "eta_baseline", "eta_mape"],
             ["eta_history", "forecast"],
             ["outliers", "diversions"],
+            ["endpoint_clusters"],
         ],
     },
     {

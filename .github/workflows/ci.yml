@@ -69,13 +69,13 @@ jobs:
           uv run dbt build
           uv run python -c "import duckdb; n = duckdb.sql(\"select count(*) from 'target/marts/fct_flights.parquet'\").fetchone()[0]; print('flights:', n); assert n > 100"
           uv run python -c "import duckdb; n = duckdb.sql(\"select count(*) from 'target/marts/fct_diversions.parquet'\").fetchone()[0]; print('diversions:', n); assert n == 1"
-      - name: ML on the test marts (ETA vs baseline, Isolation Forest, forecast smoke)
+      - name: ML on the test marts (ETA vs baseline, Isolation Forest, forecast, DBSCAN smoke)
         env:
           SKYRADAR_MARTS_ROOT: pipeline/dbt/target/marts
         run: |
           uv run python - <<'PY'
           from pathlib import Path
-          from skyradar_ml import eta, forecast, outliers
+          from skyradar_ml import endpoints, eta, forecast, outliers
           root = Path("pipeline/dbt/target/marts")
           r = eta.train(root, min_flights=50)
           print("eta", r.status, r.metrics)
@@ -84,6 +84,7 @@ jobs:
           print("outliers", o.status, o.n_outliers)
           assert o.status == "scored"
           print("forecast", forecast.run(root, min_hours=2, holdout=1).status)
+          print("endpoint clusters", endpoints.run(root, min_endpoints=1).status)
           PY
       - name: Assistant eval - reference queries (no LLM call in CI)
         env:

@@ -22,3 +22,19 @@ models:
         description: Great-circle displacement / flown path (1 = straight line).
         data_tests:
           - value_between: {arguments: {min_value: 0, max_value: 1}}
+  - name: ml_unmatched_endpoints
+    description: >
+      Low flight endpoints (take-off / landing) with no airport of `stg_airports` within
+      `endpoint_max_distance_km`; clustered with DBSCAN by the ML layer.
+    columns:
+      - name: flight_id
+        data_tests: [not_null]
+      - name: endpoint
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['departure', 'arrival']
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [flight_id, endpoint]

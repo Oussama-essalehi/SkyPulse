@@ -18,6 +18,7 @@ def test_definitions_load() -> None:
         "eta_model",
         "traffic_forecast",
         "trajectory_outliers",
+        "endpoint_clusters",
         "diversion_alerts",
         "lake_compaction",
         "ml_eta_features",
