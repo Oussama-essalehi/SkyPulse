@@ -25,6 +25,12 @@ setWorkerUrl(maplibreWorkerUrl);
 
 const FRAME_MS = 50; // ~20 fps is plenty for aircraft moving a few pixels per second
 
+/** Frame a whole flight (bounds [[west, south], [east, north]]). */
+export interface FitTarget {
+  bounds: [[number, number], [number, number]];
+  seq: number;
+}
+
 export interface FlyTarget {
   lon: number;
   lat: number;
@@ -42,6 +48,7 @@ interface Props {
   /** Flight of the selected aircraft: its track is drawn from the departure airport. */
   flight: FlightInfo | null;
   flyTo: FlyTarget | null;
+  fitTo: FitTarget | null;
   airports: Airport[];
   selectedAirport: string | null;
   onSelectAirport: (icao: string) => void;
@@ -169,15 +176,26 @@ export function MapView(props: Props) {
         ? airports.find((a) => a.icao === selectedAirport)
         : undefined;
       const colors = PALETTE;
-      const buffers = store.frame(filters, selected);
-      buffersRef.current = buffers;
       const now = store.now();
       const selectedAircraft = selected ? store.aircraft.get(selected) : undefined;
+      // Focus: with an aircraft selected, the others (and their alerts) are hidden so
+      // that its track stays readable over thousands of aircraft.
+      const focus = selectedAircraft !== undefined;
+      const buffers = store.frame(filters, selected, focus);
+      buffersRef.current = buffers;
       const selectedPos = selectedAircraft ? store.position(selectedAircraft, now) : null;
       const path = selectedPos ? flightPath(trail, flight, selectedPos) : null;
+      // Departure and destination of the selected flight, always marked and named.
+      const ends = (focus ? [flight?.departure, flight?.arrival] : [])
+        .filter((a) => a && a.latitude !== null && a.longitude !== null)
+        .map((a) => ({
+          position: [a!.longitude!, a!.latitude!] as [number, number],
+          code: a!.iata ?? a!.icao,
+        }));
 
       const alertPoints: AlertPoint[] = [];
       for (const alert of alerts) {
+        if (focus && alert.icao24 !== selected) continue;
         const a = store.aircraft.get(alert.icao24);
         // Live aircraft: follow it; otherwise the position stored with the alert, if any.
         if (a)
@@ -247,9 +265,19 @@ export function MapView(props: Props) {
             })
           : null,
         // Track of the selected aircraft: dashed from the departure airport to the first
-        // observed position (estimated), then solid (observed), on a dark casing.
+        // observed position (estimated), then solid (observed), on a dark casing; the
+        // rest of the route to the destination dotted, lighter (planned).
         ...(path
           ? [
+              new PathLayer<{ path: [number, number][] }>({
+                id: "route-ahead",
+                data: dashes(path.toArrival ?? []),
+                getPath: (d) => d.path,
+                getColor: [255, 255, 255, 200],
+                getWidth: 2,
+                widthUnits: "pixels",
+                capRounded: true,
+              }),
               new PathLayer<{ path: [number, number][] }>({
                 id: "track-casing",
                 data: [{ path: path.observed }, ...dashes(path.fromDeparture ?? [])],
@@ -272,6 +300,35 @@ export function MapView(props: Props) {
               }),
             ]
           : []),
+        new ScatterplotLayer<{ position: [number, number]; code: string }>({
+          id: "route-ends",
+          data: ends,
+          getPosition: (d) => d.position,
+          getRadius: 7,
+          radiusUnits: "pixels",
+          stroked: true,
+          filled: true,
+          getFillColor: [255, 255, 255, 255],
+          getLineColor: [...colors.outline, 255],
+          getLineWidth: 2.5,
+          lineWidthUnits: "pixels",
+        }),
+        new TextLayer<{ position: [number, number]; code: string }>({
+          id: "route-end-labels",
+          data: ends,
+          getPosition: (d) => d.position,
+          getText: (d) => d.code,
+          getSize: 14,
+          getColor: [...colors.outline, 255],
+          getTextAnchor: "start",
+          getAlignmentBaseline: "center",
+          getPixelOffset: [12, 0],
+          fontFamily: "Inter, system-ui, sans-serif",
+          fontWeight: 700,
+          fontSettings: { sdf: true },
+          outlineWidth: 4,
+          outlineColor: [255, 255, 255, 230],
+        }),
         new ScatterplotLayer<AlertPoint>({
           id: "alerts",
           data: alertPoints,
@@ -362,6 +419,21 @@ export function MapView(props: Props) {
       mapRef.current = null;
     };
   }, []);
+
+  const { fitTo } = props;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!fitTo || !map) return;
+    // Room for the aircraft card: on the right on a desktop, at the bottom on a phone.
+    const phone = window.innerWidth <= 760;
+    map.fitBounds(fitTo.bounds, {
+      padding: phone
+        ? { top: 120, bottom: Math.round(window.innerHeight * 0.55) + 20, left: 30, right: 30 }
+        : { top: 90, bottom: 70, left: 70, right: 440 },
+      maxZoom: 8,
+      duration: 1200,
+    });
+  }, [fitTo]);
 
   const { flyTo } = props;
   useEffect(() => {

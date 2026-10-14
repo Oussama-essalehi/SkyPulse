@@ -110,8 +110,11 @@ export class AircraftStore {
     return true;
   }
 
-  /** Fill the render buffers for the current frame (reuses allocations). */
-  frame(filters: Filters, selected: string | null): RenderBuffers {
+  /**
+   * Fill the render buffers for the current frame (reuses allocations). With `focus`, only
+   * the selected aircraft is drawn: its track stays readable over thousands of others.
+   */
+  frame(filters: Filters, selected: string | null, focus = false): RenderBuffers {
     const n = this.aircraft.size;
     let buf = this.buffers;
     if (buf.positions.length < n * 2) {
@@ -128,7 +131,7 @@ export class AircraftStore {
     const ids: string[] = [];
     let k = 0;
     for (const a of this.aircraft.values()) {
-      if (!this.matches(a, filters) && a.icao24 !== selected) continue;
+      if (a.icao24 !== selected && ((focus && selected) || !this.matches(a, filters))) continue;
       const [lon, lat] = this.position(a, now);
       buf.positions[2 * k] = lon;
       buf.positions[2 * k + 1] = lat;

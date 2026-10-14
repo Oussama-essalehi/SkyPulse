@@ -84,6 +84,8 @@ export interface AircraftDetail {
     velocity: number | null;
     vertical_rate: number | null;
     true_track: number | null;
+    latitude: number;
+    longitude: number;
     squawk: string | null;
     on_ground: boolean;
     last_contact: number;
