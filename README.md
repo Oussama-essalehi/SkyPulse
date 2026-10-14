@@ -159,10 +159,10 @@ par zone, les pays et les altitudes sont alimentés tout de suite ; les tableaux
 d'aéroports et de routes se remplissent après quelques heures d'historique.</sub>
 
 ![Dashboard Compagnies et flotte sur les données réelles](docs/images/superset-fleet.png)
-<sub>*Compagnies et flotte*, sur les données réelles : 77 % des ~14 000 avions observés sont
-identifiés dans la base OpenSky (type, immatriculation), la compagnie vient du callsign.
-Capture prise après 3 h d'ingestion : les vols reconstitués par compagnie n'apparaissent
-qu'avec plus d'historique.</sub>
+<sub>*Compagnies et flotte*, sur les données réelles (14/10/2026) : 74 % des ~24 000 avions
+observés sont identifiés dans la base OpenSky (type, immatriculation), la compagnie vient du
+callsign ; 4 300 vols reconstitués. Le creux de la courbe horaire (00 h - 09 h UTC) est une
+interruption de l'ingestion dans l'environnement de démonstration, pas une absence de trafic.</sub>
 
 ![Dashboard des modèles de ML](docs/images/superset-ml.png)
 <sub>*Modèles ML* : MAE de l'ETA contre la baseline, historique des métriques, trafic observé
