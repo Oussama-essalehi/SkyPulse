@@ -67,7 +67,7 @@ test-lake: ## Build a deterministic local lake for dbt tests
 	$(RUN) python scripts/build_test_lake.py --root $(TEST_LAKE)
 
 # ------------------------------------------------------------------- dev
-.PHONY: install test lint format typecheck dbt-parse dbt-build eval-assistant smoke front-dev
+.PHONY: install test lint format typecheck dbt-parse dbt-build eval-assistant smoke test-ui front-dev
 install: ## Install Python (uv) and frontend (npm) dependencies + pre-commit hooks
 	$(UV) sync --all-packages
 	cd frontend && npm ci
@@ -104,6 +104,9 @@ eval-assistant: dbt-build ## Evaluate the assistant (needs ANTHROPIC_API_KEY; DR
 
 smoke: ## End-to-end smoke test against a running stack (make up-demo first)
 	$(RUN) pytest -m integration tests -v
+
+test-ui: ## Browser tests (Playwright) against a running stack (make up-demo first)
+	cd frontend && SKYRADAR_URL=$${SKYRADAR_URL:-http://localhost:3000} npm run test:e2e
 
 front-dev: ## Frontend dev server (proxies /api to localhost:8000)
 	cd frontend && npm run dev
