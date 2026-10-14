@@ -278,3 +278,19 @@ def test_rejected_route_without_history_is_still_reported(tmp_path: Path) -> Non
     assert flight["arrival"] is None
     assert flight["rejected_route"] == "LFPG → LIRF"
     assert enrichment.eta(state(), flight) is None
+
+
+def test_landed_aircraft_is_detached_from_its_previous_flight(tmp_path: Path) -> None:
+    """On the ground far from the observed take-off (LFPG): that flight is over."""
+    marts(tmp_path)
+    enrichment = Enrichment(root=tmp_path)
+    landed = enrichment.flight(
+        state(callsign="XXX1", on_ground=True, latitude=45.72, longitude=5.08, velocity=0.0)
+    )
+    assert landed is None
+    # Still at the departure airport (taxiing out): the flight is kept.
+    taxiing = enrichment.flight(
+        state(callsign="XXX1", on_ground=True, latitude=49.01, longitude=2.55, velocity=5.0)
+    )
+    assert taxiing is not None
+    assert taxiing["departure"]["icao"] == "LFPG"

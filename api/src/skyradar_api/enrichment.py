@@ -40,6 +40,7 @@ log = structlog.get_logger(__name__)
 
 EARTH_RADIUS_KM = 6371.0
 FLIGHT_MAX_AGE_S = 20 * 3600
+GROUND_AT_AIRPORT_KM = 10.0  # on the ground this close to the take-off airport: not left yet
 AIRLINE_CALLSIGN = re.compile(r"^([A-Z]{3})\d")
 REGISTRY_CACHE_SIZE = 20_000
 REGISTRY_COLUMNS = (
@@ -381,6 +382,15 @@ class Enrichment:
         """
         self.refresh()
         current = self.current_flights.get(state.icao24)
+        if current is not None and state.on_ground:
+            # On the ground away from the observed take-off: that flight has landed (its
+            # arrival is not reconstructed yet, or fell outside an airport): don't show it.
+            origin = self.airports.get(current[0])
+            if origin is None or (
+                haversine_km(origin.latitude, origin.longitude, state.latitude, state.longitude)
+                > GROUND_AT_AIRPORT_KM
+            ):
+                current = None
         departure: dict[str, Any] | None = None
         arrival: dict[str, Any] | None = None
         departure_source = arrival_source = None
