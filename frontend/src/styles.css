@@ -505,33 +505,82 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-.route {
+.route-ends {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 20px;
-  font-weight: 600;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.route .arrow {
-  color: var(--accent);
-}
-
-.eta {
+.route-end {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin-top: 10px;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--surface);
+  min-width: 0;
 }
 
-.eta-value {
-  font-size: 20px;
-  font-weight: 600;
+.route-end-right {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.route-code {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--strong);
+}
+
+.route-place {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.route-plane {
+  align-self: center;
   color: var(--accent);
+  font-size: 18px;
+  margin-top: -14px;
+}
+
+.route-progress {
+  height: 6px;
+  margin: 10px 0 12px;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.route-progress-bar {
+  height: 100%;
+  background: var(--accent);
+}
+
+.flight-times {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin: 0 0 8px;
+}
+
+.flight-times dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.flight-times dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.flight p {
+  margin: 4px 0 0;
 }
 
 .assistant form {

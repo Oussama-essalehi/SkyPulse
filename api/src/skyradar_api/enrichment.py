@@ -33,6 +33,7 @@ import duckdb
 import numpy as np
 import structlog
 
+from skyradar_api.routes import FlightRoute, RouteAirport, check_route
 from skyradar_common.models import StateVector
 
 log = structlog.get_logger(__name__)
@@ -88,12 +89,27 @@ def bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return (math.degrees(math.atan2(y, x)) + 360) % 360
 
 
+def _route_airport(airport: RouteAirport) -> dict[str, Any]:
+    return {
+        "icao": airport.icao,
+        "iata": airport.iata,
+        "name": airport.name,
+        "city": airport.city,
+        "country": airport.country,
+        "latitude": airport.latitude,
+        "longitude": airport.longitude,
+    }
+
+
 @dataclass
 class Airport:
     icao: str
     name: str
     latitude: float
     longitude: float
+    iata: str | None = None
+    city: str | None = None
+    country: str | None = None
 
 
 @dataclass
@@ -162,6 +178,11 @@ class Enrichment:
     def _query(self, sql: str) -> list[tuple[Any, ...]]:
         return duckdb.connect(":memory:").execute(sql).fetchall()
 
+    def _records(self, sql: str) -> list[dict[str, Any]]:
+        cursor = duckdb.connect(":memory:").execute(sql)
+        names = [d[0] for d in cursor.description or []]
+        return [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+
     def _load(self) -> None:
         (
             airports_file,
@@ -189,13 +210,18 @@ class Enrichment:
                 )
             )
         if airports_file.exists():
-            self.airports = {
-                icao: Airport(icao, name, float(lat), float(lon))
-                for icao, name, lat, lon in self._query(
-                    "select airport_icao, airport_name, latitude, longitude "
-                    f"from read_parquet('{airports_file}')"
+            self.airports = {}
+            for row in self._records(f"select * from read_parquet('{airports_file}')"):
+                icao = row["airport_icao"]
+                self.airports[icao] = Airport(
+                    icao,
+                    row["airport_name"],
+                    float(row["latitude"]),
+                    float(row["longitude"]),
+                    row.get("airport_iata"),
+                    row.get("municipality"),
+                    row.get("iso_country"),
                 )
-            }
         if routes_file.exists():
             rows = self._query(
                 "select callsign, departure_airport, usual_arrival_airport, route_flights, "
@@ -293,42 +319,119 @@ class Enrichment:
         self._registry_cache[icao24] = info
         return info
 
-    def flight(self, state: StateVector) -> dict[str, Any] | None:
+    def flight(
+        self, state: StateVector, published: FlightRoute | None = None
+    ) -> dict[str, Any] | None:
+        """Departure, destination, times and progress of the current flight.
+
+        Sources, most trusted first:
+
+        * departure: the in-progress reconstructed flight (observed take-off);
+        * the published route of the callsign (adsbdb), when it is consistent with the
+          live position and track (:func:`check_route`) and with the observed departure;
+        * the usual destination of the callsign in our own history (``fct_callsign_routes``).
+        """
         self.refresh()
         current = self.current_flights.get(state.icao24)
-        route: Route | None = None
-        source = None
-        if current is not None and state.callsign:
-            route = self.routes.get((state.callsign, current[0]))
-            source = "usual destination of this callsign from its departure airport"
-        if route is None and state.callsign and state.callsign in self.dominant_routes:
-            route = self.dominant_routes[state.callsign]
-            source = "most frequent route of this callsign"
-        if current is None and route is None:
+        departure: dict[str, Any] | None = None
+        arrival: dict[str, Any] | None = None
+        departure_source = arrival_source = None
+        history: Route | None = None
+        rejected = None
+
+        if current is not None:
+            departure, departure_source = self._airport(current[0]), "reconstructed"
+        if published is not None:
+            consistent = check_route(
+                published, state.latitude, state.longitude, state.true_track, state.on_ground
+            )
+            if consistent and current is not None and current[0] != published.origin.icao:
+                consistent = False  # observed take-off elsewhere: stale or reused callsign
+            if consistent:
+                if departure is None:
+                    departure, departure_source = _route_airport(published.origin), "route_db"
+                arrival, arrival_source = _route_airport(published.destination), "route_db"
+            else:
+                rejected = f"{published.origin.icao} → {published.destination.icao}"
+        if arrival is None and state.callsign:
+            if current is not None:
+                history = self.routes.get((state.callsign, current[0]))
+            history = history or self.dominant_routes.get(state.callsign)
+            if history is not None:
+                arrival, arrival_source = self._airport(history.arrival), "history"
+                if departure is None:
+                    departure, departure_source = self._airport(history.departure), "history"
+        if departure is None and arrival is None and rejected is None:
             return None
-        departure = current[0] if current else (route.departure if route else None)
+
+        position_time = float(state.time_position or state.last_contact)
+        flown = remaining = total = progress = None
+        if departure and departure.get("latitude") is not None:
+            flown = haversine_km(
+                departure["latitude"], departure["longitude"], state.latitude, state.longitude
+            )
+        if arrival and arrival.get("latitude") is not None:
+            remaining = haversine_km(
+                state.latitude, state.longitude, arrival["latitude"], arrival["longitude"]
+            )
+        if flown is not None and remaining is not None:
+            total = haversine_km(
+                departure["latitude"],  # type: ignore[index]
+                departure["longitude"],  # type: ignore[index]
+                arrival["latitude"],  # type: ignore[index]
+                arrival["longitude"],  # type: ignore[index]
+            )
+            progress = min(1.0, flown / max(flown + remaining, 1.0))
+
+        departure_time: float | None = current[1] if current else None
+        estimated = False
+        if departure_time is None and flown is not None and not state.on_ground:
+            # No observed take-off: distance flown at a typical average ground speed
+            # (climb and acceleration make it lower than the current cruise speed).
+            average = max(0.8 * (state.velocity or 0.0), 120.0)
+            departure_time = position_time - flown * 1000 / average
+            estimated = True
+
         return {
             "departure": departure,
-            "departure_name": self._name(departure),
-            "departure_time": current[1] if current else None,
-            "departure_source": "reconstructed" if current else "usual route",
-            "arrival": route.arrival if route else None,
-            "arrival_name": self._name(route.arrival if route else None),
-            "arrival_source": source,
-            "route_flights": route.flights if route else None,
-            "route_share": route.share if route else None,
+            "arrival": arrival,
+            "departure_source": departure_source,
+            "arrival_source": arrival_source,
+            "departure_time": round(departure_time) if departure_time else None,
+            "departure_time_estimated": estimated,
+            "elapsed_s": round(position_time - departure_time) if departure_time else None,
+            "route_km": round(total) if total is not None else None,
+            "flown_km": round(flown) if flown is not None else None,
+            "remaining_km": round(remaining) if remaining is not None else None,
+            "progress": round(progress, 3) if progress is not None else None,
+            "route_flights": history.flights if history else None,
+            "route_share": history.share if history else None,
+            "rejected_route": rejected,
         }
 
-    def _name(self, icao: str | None) -> str | None:
-        airport = self.airports.get(icao) if icao else None
-        return airport.name if airport else None
+    def _airport(self, icao: str | None) -> dict[str, Any] | None:
+        if not icao:
+            return None
+        airport = self.airports.get(icao)
+        return {
+            "icao": icao,
+            "iata": airport.iata if airport else None,
+            "name": airport.name if airport else None,
+            "city": airport.city if airport else None,
+            "country": airport.country if airport else None,
+            "latitude": airport.latitude if airport else None,
+            "longitude": airport.longitude if airport else None,
+        }
 
     def eta(self, state: StateVector, flight: dict[str, Any] | None) -> dict[str, Any] | None:
-        if flight is None or not flight.get("arrival") or state.on_ground:
+        arrival = (flight or {}).get("arrival")
+        if not arrival or arrival.get("latitude") is None or state.on_ground:
             return None
-        airport = self.airports.get(flight["arrival"])
+        airport = Airport(
+            arrival["icao"], arrival.get("name") or "", arrival["latitude"], arrival["longitude"]
+        )
         velocity = state.velocity or 0.0
-        if airport is None or velocity < 30:
+        if velocity < 30:
             return None
         remaining = haversine_km(
             state.latitude, state.longitude, airport.latitude, airport.longitude
@@ -336,9 +439,15 @@ class Enrichment:
         naive = remaining * 1000 / max(velocity, 30.0)
         position_time = state.time_position or state.last_contact
         seconds, method = naive, "naive"
+        # An estimated take-off time would feed a made-up elapsed time to the model.
+        departure_time = (
+            None
+            if (flight or {}).get("departure_time_estimated")
+            else ((flight or {}).get("departure_time"))
+        )
         if self.model is not None:
             seconds, method = (
-                self._predict(state, airport, remaining, naive, flight.get("departure_time")),
+                self._predict(state, airport, remaining, naive, departure_time),
                 "lightgbm",
             )
         return {

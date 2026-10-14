@@ -148,7 +148,8 @@ jobs:
       - run: cp .env.example .env
       # No recording in CI: the ingestion service generates synthetic traffic.
       - name: Start the demo stack in replay mode
-        run: SOURCE=replay REPLAY_SPEED=5 docker compose --profile demo up -d --build --wait
+        # Synthetic callsigns: no published route to look up, keep CI off the network.
+        run: SOURCE=replay REPLAY_SPEED=5 ROUTE_LOOKUP=off docker compose --profile demo up -d --build --wait
       - name: Smoke tests
         run: uv run pytest -m integration tests -v
       - name: Logs on failure

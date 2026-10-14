@@ -110,16 +110,34 @@ export interface AircraftInfo {
   in_registry: boolean;
 }
 
+export interface AirportInfo {
+  icao: string;
+  iata: string | null;
+  name: string | null;
+  city: string | null;
+  country: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+/** Where a departure / destination comes from, most trusted first. */
+export type RouteSource = "reconstructed" | "route_db" | "history";
+
 export interface FlightInfo {
-  departure: string | null;
-  departure_name: string | null;
+  departure: AirportInfo | null;
+  arrival: AirportInfo | null;
+  departure_source: RouteSource | null;
+  arrival_source: RouteSource | null;
   departure_time: number | null;
-  departure_source: "reconstructed" | "usual route";
-  arrival: string | null;
-  arrival_name: string | null;
-  arrival_source: string | null;
+  departure_time_estimated: boolean;
+  elapsed_s: number | null;
+  route_km: number | null;
+  flown_km: number | null;
+  remaining_km: number | null;
+  progress: number | null;
   route_flights: number | null;
   route_share: number | null;
+  rejected_route: string | null;
 }
 
 export interface EtaInfo {

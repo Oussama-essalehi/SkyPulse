@@ -111,6 +111,8 @@ services:
       API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
       ASSISTANT_URL: http://assistant:8001
       SKYRADAR_MARTS_ROOT: /data/marts
+      # Published route of a callsign (aircraft card): adsbdb, or "off" (offline stack).
+      ROUTE_LOOKUP: ${ROUTE_LOOKUP:-adsbdb}
     volumes:
       # Routes and ETA model from the analytics layer (empty in the demo profile).
       - marts:/data/marts:ro
