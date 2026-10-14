@@ -16,7 +16,13 @@ function trackErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(String(error)));
   page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
+    if (message.type() !== "error") return;
+    // A third-party outage (basemap CDN) is not an app error: the app logs a warning
+    // and keeps the live map; the browser still reports the failed request itself.
+    const resource = message.location().url;
+    const thirdParty = resource && new URL(resource).origin !== new URL(page.url()).origin;
+    if (thirdParty && message.text().startsWith("Failed to load resource")) return;
+    errors.push(message.text());
   });
   return errors;
 }

@@ -1,7 +1,7 @@
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import type { PickingInfo } from "@deck.gl/core";
-import { Map as MapLibreMap, NavigationControl, setWorkerUrl } from "maplibre-gl";
+import { type ErrorEvent, Map as MapLibreMap, NavigationControl, setWorkerUrl } from "maplibre-gl";
 // MapLibre v6 loads its tile worker from a separate ES module: let Vite bundle it.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -108,6 +108,12 @@ export function MapView(props: Props) {
     map.touchZoomRotate.disableRotation();
     map.addControl(new NavigationControl({ showCompass: false }), "bottom-right");
     map.on("style.load", () => tintStyle(map, propsRef.current.theme));
+    // Basemap tiles / style from a public CDN: an outage must not break the live map
+    // (aircraft are drawn by deck.gl on their own canvas). Without a listener MapLibre
+    // reports it as an error; the previous basemap simply stays.
+    map.on("error", (event: ErrorEvent) =>
+      console.warn("basemap unavailable:", event.error?.message),
+    );
     mapRef.current = map;
 
     const overlay = new MapboxOverlay({
@@ -337,7 +343,8 @@ export function MapView(props: Props) {
     const map = mapRef.current;
     if (!map || appliedTheme.current === theme) return;
     appliedTheme.current = theme;
-    map.setStyle(MAP_THEMES[theme].style);
+    // No style diff: its failure would be an unhandled rejection, not an "error" event.
+    map.setStyle(MAP_THEMES[theme].style, { diff: false });
   }, [theme]);
 
   const { flyTo } = props;
