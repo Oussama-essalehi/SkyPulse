@@ -11,4 +11,11 @@ export const ALERT_LABELS: Record<string, string> = {
   trajectory_outlier: "Trajectoire atypique",
 };
 
-export const DEFAULT_FILTERS: Filters = { minAlt: 0, maxAlt: 15000, country: "", status: "all" };
+export const DEFAULT_FILTERS: Filters = {
+  minAlt: 0,
+  maxAlt: 15000,
+  country: "",
+  status: "all",
+  airport: null,
+  aircraft: null,
+};

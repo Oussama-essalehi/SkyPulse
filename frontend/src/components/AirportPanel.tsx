@@ -3,6 +3,7 @@ import { type ReactNode, useState } from "react";
 import { airportCode } from "../lib/airports";
 import { airportLabel, clock, duration, placeName } from "../lib/flight";
 import type { Airport, AirportBoard, BoardRow, BoardStatus, Movement } from "../lib/types";
+import { WeatherCard } from "./WeatherCard";
 
 type Tab = "arrivals" | "departures" | "ground" | "history";
 
@@ -184,6 +185,7 @@ export function AirportPanel({ airport, board, error, now, onClose, onPick }: Pr
           {[info?.name, info?.icao, info?.country].filter(Boolean).join(" · ")}
         </span>
       </header>
+      {info && <WeatherCard icao={info.icao} />}
       <div className="segmented board-tabs" role="tablist">
         {tabs.map(([name, label, n]) => (
           <button

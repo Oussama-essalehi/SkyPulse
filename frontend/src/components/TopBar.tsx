@@ -1,7 +1,6 @@
 import { useState } from "react";
 
 import { airportCode, searchAirports } from "../lib/airports";
-import type { Theme } from "../lib/colors";
 import type { AircraftStore } from "../lib/store";
 import type { Airport } from "../lib/types";
 import type { ConnectionStatus } from "../lib/useLive";
@@ -19,8 +18,6 @@ interface Props {
   onPick: (icao24: string) => void;
   airports: Airport[];
   onPickAirport: (icao: string) => void;
-  theme: Theme;
-  onTheme: (theme: Theme) => void;
 }
 
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
@@ -41,7 +38,7 @@ const SOURCE_LABEL: Record<string, string> = {
 
 export function TopBar(props: Props) {
   const { store, status, visible, alertCount, criticalCount, panel, onPanel, onPick } = props;
-  const { theme, onTheme, airports, onPickAirport } = props;
+  const { airports, onPickAirport } = props;
   const [query, setQuery] = useState("");
   const hits = store.search(query, 6);
   const airportHits = searchAirports(airports, query);
@@ -135,18 +132,6 @@ export function TopBar(props: Props) {
           onClick={() => toggle("assistant")}
         >
           Assistant
-        </button>
-        <button
-          className="theme-toggle"
-          onClick={() => onTheme(theme === "dark" ? "grey" : "dark")}
-          title={theme === "dark" ? "Passer au thème gris" : "Passer au thème sombre"}
-          aria-label={theme === "dark" ? "Passer au thème gris" : "Passer au thème sombre"}
-        >
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-            <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor" />
-          </svg>
-          {theme === "dark" ? "Gris" : "Sombre"}
         </button>
       </nav>
     </header>

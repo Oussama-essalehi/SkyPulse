@@ -10,9 +10,7 @@ import { type FlyTarget, MapView } from "./components/MapView";
 import { type PanelName, TopBar } from "./components/TopBar";
 import { fromColumns } from "./lib/airports";
 import { api } from "./lib/api";
-import type { Theme } from "./lib/colors";
 import { DEFAULT_FILTERS } from "./lib/labels";
-import { applyTheme, initialTheme } from "./lib/theme";
 import type { AircraftDetail, Airport, AirportBoard, Filters } from "./lib/types";
 import { useLive } from "./lib/useLive";
 
@@ -34,15 +32,6 @@ export default function App() {
   const [backTo, setBackTo] = useState<string | null>(null);
   const [board, setBoard] = useState<AirportBoard | null>(null);
   const [boardError, setBoardError] = useState<string | null>(null);
-  const [theme, setTheme] = useState<Theme>(() => {
-    const initial = initialTheme();
-    applyTheme(initial); // before the first paint: no flash of the wrong theme
-    return initial;
-  });
-  const changeTheme = useCallback((next: Theme) => {
-    applyTheme(next, true);
-    setTheme(next);
-  }, []);
 
   // Airports of the reference (map layer, search); retried while the API has none yet.
   useEffect(() => {
@@ -85,6 +74,30 @@ export default function App() {
       setBoardError(null);
     };
   }, [airport]);
+
+  // Airport filter: the map shows the aircraft of the airport's live board (all of them).
+  const filterAirport = filters.status === "airport" ? filters.airport : null;
+  useEffect(() => {
+    if (!filterAirport) return;
+    let cancelled = false;
+    const load = () =>
+      api
+        .airportBoard(filterAirport, 500)
+        .then((b) => {
+          if (cancelled) return;
+          const ids = new Set([...b.arrivals, ...b.departures, ...b.ground].map((r) => r.icao24));
+          setFilters((f) => (f.airport === filterAirport ? { ...f, aircraft: ids } : f));
+        })
+        .catch(() => {
+          // kept as is: the next refresh tries again
+        });
+    void load();
+    const timer = window.setInterval(load, BOARD_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [filterAirport]);
 
   // Fetch the aircraft card (trail, alerts, reconstructed flight) and keep it fresh.
   useEffect(() => {
@@ -158,7 +171,7 @@ export default function App() {
   }, [store, filters, tick]);
   const countries = useMemo(() => (panel === "filters" ? store.countries() : []), [store, panel]);
   const criticalCount = alerts.filter((a) => a.severity === "critical").length;
-  const trail = detail?.state.icao24 === selected ? (detail?.trail ?? null) : null;
+  const current = detail?.state.icao24 === selected ? detail : null;
 
   return (
     <div className="app">
@@ -171,9 +184,9 @@ export default function App() {
         selectedAirport={airport}
         onSelectAirport={(icao) => pickAirport(icao, false)}
         alerts={alerts}
-        trail={trail}
+        trail={current?.trail ?? null}
+        flight={current?.flight ?? null}
         flyTo={flyTo}
-        theme={theme}
       />
       <TopBar
         store={store}
@@ -186,8 +199,6 @@ export default function App() {
         onPick={pick}
         airports={airports}
         onPickAirport={pickAirport}
-        theme={theme}
-        onTheme={changeTheme}
       />
       <AlertBanner alerts={alerts} onPick={pick} />
       {panel && (
@@ -196,7 +207,16 @@ export default function App() {
             ×
           </button>
           {panel === "filters" && (
-            <FiltersPanel filters={filters} countries={countries} onChange={setFilters} />
+            <FiltersPanel
+              filters={filters}
+              countries={countries}
+              airports={airports}
+              onChange={setFilters}
+              onAirport={(icao) => {
+                const a = airportsByIcao.get(icao);
+                if (a) setFlyTo({ lon: a.lon, lat: a.lat, seq: Date.now(), zoom: 8 });
+              }}
+            />
           )}
           {panel === "alerts" && <AlertsPanel alerts={alerts} onPick={pick} />}
           {panel === "assistant" && <AssistantPanel />}
@@ -228,7 +248,7 @@ export default function App() {
           onPick={pickFromBoard}
         />
       )}
-      <Legend theme={theme} />
+      <Legend />
       <footer className="attribution">
         Données ADS-B ©{" "}
         <a href="https://opensky-network.org" target="_blank" rel="noreferrer">

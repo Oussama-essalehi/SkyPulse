@@ -1,4 +1,4 @@
-import { altitudeColor, palette } from "./colors";
+import { altitudeColor, PALETTE } from "./colors";
 import { blendWeight, deadReckon, haversineKm } from "./geo";
 import type { Aircraft, Columns, Filters, SnapshotMessage } from "./types";
 
@@ -99,13 +99,14 @@ export class AircraftStore {
   matches(a: Aircraft, filters: Filters): boolean {
     if (filters.status === "airborne" && a.onGround) return false;
     if (filters.status === "ground" && !a.onGround) return false;
+    // Airport mode: the aircraft of its live board only (none until the board is loaded).
+    if (filters.status === "airport" && !filters.aircraft?.has(a.icao24)) return false;
     if (filters.country && a.country !== filters.country) return false;
-    if (!a.onGround) {
-      const alt = a.alt ?? 0;
-      // The slider maximum means "no upper bound" (a few aircraft report > 15 km).
-      if (alt < filters.minAlt || (filters.maxAlt < MAX_ALTITUDE_FILTER && alt > filters.maxAlt))
-        return false;
-    }
+    // An aircraft on the ground is at altitude 0: a minimum altitude excludes it.
+    const alt = a.onGround ? 0 : (a.alt ?? 0);
+    // The slider maximum means "no upper bound" (a few aircraft report > 15 km).
+    if (alt < filters.minAlt || (filters.maxAlt < MAX_ALTITUDE_FILTER && alt > filters.maxAlt))
+      return false;
     return true;
   }
 
@@ -133,8 +134,7 @@ export class AircraftStore {
       buf.positions[2 * k + 1] = lat;
       // deck.gl IconLayer angles are counter-clockwise, tracks are clockwise.
       buf.angles[k] = -(a.track ?? 0);
-      const [r, g, b] =
-        a.icao24 === selected ? palette().selected : altitudeColor(a.alt, a.onGround);
+      const [r, g, b] = a.icao24 === selected ? PALETTE.selected : altitudeColor(a.alt, a.onGround);
       buf.colors[4 * k] = r;
       buf.colors[4 * k + 1] = g;
       buf.colors[4 * k + 2] = b;

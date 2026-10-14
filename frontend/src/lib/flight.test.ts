@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { airportLabel, clock, duration, placeName, sourceNotes } from "./flight";
+import { airportLabel, clock, duration, flightPath, placeName, type TrailPoint } from "./flight";
+import { haversineKm } from "./geo";
 import type { FlightInfo } from "./types";
 
 const base: FlightInfo = {
@@ -50,32 +51,6 @@ describe("flight formatting", () => {
     });
     expect(airportLabel(null)).toEqual({ code: "?", place: "Inconnu" });
   });
-
-  it("explains every source", () => {
-    const notes = sourceNotes({
-      ...base,
-      departure_source: "route_db",
-      arrival_source: "route_db",
-      departure_time_estimated: true,
-      rejected_route: null,
-    });
-    expect(notes).toHaveLength(2);
-    expect(notes[0]).toContain("adsbdb");
-    expect(notes[1]).toContain("estimée");
-    const history = sourceNotes({
-      ...base,
-      departure_source: "reconstructed",
-      arrival_source: "history",
-      route_flights: 12,
-      route_share: 0.75,
-      rejected_route: "EGLL → VOBL",
-    });
-    expect(history).toEqual([
-      "Décollage observé par SkyRadar.",
-      "Destination habituelle de ce callsign dans l'historique (12 vols, 75 %).",
-      "Route publiée EGLL → VOBL ignorée : incohérente avec la position.",
-    ]);
-  });
 });
 
 describe("placeName", () => {
@@ -83,5 +58,71 @@ describe("placeName", () => {
     expect(placeName("Paris (Roissy-en-France, Val-d'Oise)")).toBe("Paris");
     expect(placeName("Lyon")).toBe("Lyon");
     expect(placeName(null)).toBeNull();
+  });
+});
+
+describe("flightPath", () => {
+  const tarbes = {
+    icao: "LFBT",
+    iata: "LDE",
+    name: "Tarbes-Lourdes-Pyrénées",
+    city: "Tarbes",
+    country: "France",
+    latitude: 43.18,
+    longitude: 0.0,
+  };
+  const t0 = 1_800_000_000;
+  // First seen over Poitou, flying north towards Paris.
+  const trail: TrailPoint[] = [
+    [0.3, 46.5, 9000, t0],
+    [0.8, 47.5, 9000, t0 + 600],
+  ];
+
+  it("links the departure airport to the first observed point when they are apart", () => {
+    const path = flightPath(trail, { ...base, departure: tarbes }, [1.2, 48.2]);
+    expect(path.observed).toEqual([
+      [0.3, 46.5],
+      [0.8, 47.5],
+      [1.2, 48.2],
+    ]);
+    const link = path.fromDeparture!;
+    expect(link[0]).toEqual([0.0, 43.18]);
+    expect(link[link.length - 1][0]).toBeCloseTo(0.3, 6);
+    expect(link[link.length - 1][1]).toBeCloseTo(46.5, 6);
+    // Points in between stay on the great circle (no detour).
+    const direct = haversineKm(0, 43.18, 0.3, 46.5);
+    let along = 0;
+    for (let i = 1; i < link.length; i++)
+      along += haversineKm(link[i - 1][0], link[i - 1][1], link[i][0], link[i][1]);
+    expect(along).toBeCloseTo(direct, 0);
+  });
+
+  it("drops the previous flight before an observed take-off, no link when it starts there", () => {
+    const takeoff = t0 + 300;
+    const fromTarbes: TrailPoint[] = [
+      [2.0, 48.9, 0, t0], // previous leg, before the take-off
+      [0.05, 43.2, 300, takeoff],
+      [0.2, 43.6, 4000, takeoff + 300],
+    ];
+    const path = flightPath(
+      fromTarbes,
+      { ...base, departure: tarbes, departure_time: takeoff, departure_time_estimated: false },
+      null,
+    );
+    expect(path.observed).toEqual([
+      [0.05, 43.2],
+      [0.2, 43.6],
+    ]);
+    expect(path.fromDeparture).toBeNull();
+  });
+
+  it("draws the observed track alone without a known departure", () => {
+    expect(flightPath(trail, null, null)).toEqual({
+      observed: [
+        [0.3, 46.5],
+        [0.8, 47.5],
+      ],
+      fromDeparture: null,
+    });
   });
 });

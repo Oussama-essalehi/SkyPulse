@@ -1,27 +1,28 @@
 :root {
-  color-scheme: dark;
-  --bg: #05080d;
-  --panel: rgba(8, 13, 22, 0.88);
-  --panel-solid: #0a111c;
-  --border: #1b2636;
-  --text: #e2e8f0;
-  --muted: #8193ab;
-  --accent: #22d3ee;
-  --critical: #ef4444;
-  --warning: #f59e0b;
-  --info: #38bdf8;
-  --ok: #22c55e;
-  --strong: #fff;
-  --on-accent: #001018;
-  --surface: rgba(15, 23, 36, 0.8);
-  --hover: #111c2c;
-  --code-bg: #02050a;
-  --error-text: #fca5a5;
-  --topbar-bg: linear-gradient(180deg, rgba(5, 8, 13, 0.96), rgba(5, 8, 13, 0.75));
-  --vignette: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
-  --shadow: rgba(0, 0, 0, 0.5);
-  --banner-bg: rgba(60, 10, 14, 0.9);
-  --attrib-bg: rgba(5, 8, 13, 0.6);
+  /* One soft theme: warm grey panels (no glaring white) over a mid-tone map. */
+  color-scheme: light;
+  --bg: #84837e;
+  --panel: rgba(220, 220, 213, 0.95);
+  --panel-solid: #dcdcd5;
+  --border: #aeb0a7;
+  --text: #1c2023;
+  --muted: #4a5055;
+  --accent: #0b6670;
+  --critical: #b91c1c;
+  --warning: #8a4b0a;
+  --info: #0b5a85;
+  --ok: #1f6b37;
+  --strong: #0b0f12;
+  --on-accent: #fff;
+  --surface: rgba(205, 206, 198, 0.9);
+  --hover: #cfd0c8;
+  --code-bg: #d0d1c9;
+  --error-text: #991b1b;
+  --topbar-bg: linear-gradient(180deg, rgba(216, 216, 209, 0.98), rgba(216, 216, 209, 0.9));
+  --vignette: radial-gradient(ellipse at center, transparent 62%, rgba(30, 34, 36, 0.18) 100%);
+  --shadow: rgba(20, 24, 28, 0.28);
+  --banner-bg: rgba(254, 226, 226, 0.96);
+  --attrib-bg: rgba(216, 216, 209, 0.85);
   --radius: 10px;
   --topbar-h: 56px;
   font-family:
@@ -35,33 +36,6 @@
   background: var(--bg);
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
-}
-
-/* Light grey theme (toggle in the top bar, remembered per browser). */
-:root[data-theme="grey"] {
-  color-scheme: light;
-  --bg: #d9dde3;
-  --panel: rgba(241, 243, 246, 0.92);
-  --panel-solid: #eef0f3;
-  --border: #c3cad4;
-  --text: #1f2933;
-  --muted: #5b6878;
-  --accent: #0e7490;
-  --critical: #dc2626;
-  --warning: #b45309;
-  --info: #0369a1;
-  --ok: #15803d;
-  --strong: #0f172a;
-  --on-accent: #fff;
-  --surface: rgba(226, 230, 235, 0.9);
-  --hover: #dde2e8;
-  --code-bg: #e4e8ed;
-  --error-text: #b91c1c;
-  --topbar-bg: linear-gradient(180deg, rgba(236, 239, 243, 0.97), rgba(236, 239, 243, 0.82));
-  --vignette: radial-gradient(ellipse at center, transparent 60%, rgba(60, 70, 85, 0.18) 100%);
-  --shadow: rgba(30, 41, 59, 0.18);
-  --banner-bg: rgba(254, 226, 226, 0.95);
-  --attrib-bg: rgba(236, 239, 243, 0.8);
 }
 
 * {
@@ -86,6 +60,8 @@ button {
 .map {
   position: absolute;
   inset: 0;
+  z-index: 0;
+  isolation: isolate;
   background: var(--bg);
 }
 
@@ -645,7 +621,7 @@ td {
 
 .legend {
   position: absolute;
-  z-index: 1;
+  z-index: 2;
   left: 12px;
   bottom: 28px;
   display: grid;
@@ -743,12 +719,6 @@ td {
   .legend {
     display: none;
   }
-}
-
-.theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 /* Airport board (click an airport on the map, or search its code). */
@@ -903,4 +873,161 @@ td {
   .airport-panel {
     width: 100%;
   }
+}
+
+/* Airport filter (Filtres > Aéroport) and weather card (filter and airport board). */
+.status-filter button {
+  flex: 1;
+  justify-content: center;
+  padding: 7px 6px;
+}
+
+.airport-filter {
+  margin: -4px 0 14px;
+}
+
+.airport-filter input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-solid);
+}
+
+.airport-filter-results {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.airport-filter-results button {
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+
+.airport-filter-results button:hover {
+  background: var(--hover);
+}
+
+.airport-filter-chosen {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.weather {
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.weather header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.weather h3 {
+  margin: 0;
+}
+
+.weather-category {
+  margin-left: auto;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  color: #fff;
+  background: var(--muted);
+}
+
+.weather-vfr {
+  background: var(--ok);
+}
+
+.weather-mvfr {
+  background: var(--info);
+}
+
+.weather-ifr {
+  background: var(--critical);
+}
+
+.weather-lifr {
+  background: #7e22ce;
+}
+
+.weather-main {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.weather-temp {
+  font-size: 24px;
+  color: var(--strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.weather-facts div {
+  display: flex;
+  flex-direction: column;
+}
+
+.weather-facts dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.weather-facts dd {
+  margin: 0;
+}
+
+.wind-arrow {
+  display: inline-block;
+  margin-right: 4px;
+  font-weight: 700;
+}
+
+.weather-raw {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.weather-raw code {
+  display: block;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--code-bg);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Altitude color of the selected aircraft, next to its callsign (outlined like on the map). */
+.alt-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  border-radius: 50%;
+  border: 2px solid #111518;
+  vertical-align: 1px;
 }

@@ -227,7 +227,38 @@ export interface Filters {
   minAlt: number;
   maxAlt: number;
   country: string;
-  status: "all" | "airborne" | "ground";
+  /** "airport": only the aircraft of `airport` (arrivals, departures, on the ground). */
+  status: "all" | "airborne" | "ground" | "airport";
+  airport: string | null;
+  /** icao24 of the aircraft of `airport`, from its live board (null while loading). */
+  aircraft: ReadonlySet<string> | null;
+}
+
+/** Latest METAR of an airport, decoded by the API (GET /airports/{icao}/weather). */
+export interface AirportWeather {
+  station: string;
+  observed_at: number | null;
+  temperature_c: number | null;
+  dewpoint_c: number | null;
+  humidity_pct: number | null;
+  wind_direction_deg: number | null;
+  wind_variable: boolean;
+  wind_kmh: number | null;
+  gust_kmh: number | null;
+  visibility_km: number | null;
+  visibility_plus: boolean;
+  pressure_hpa: number | null;
+  conditions: string | null;
+  sky: string | null;
+  cloud_base_m: number | null;
+  flight_category: string | null;
+  raw: string | null;
+}
+
+export interface WeatherResponse {
+  airport: string;
+  enabled: boolean;
+  weather: AirportWeather | null;
 }
 
 export interface AssistantAnswer {

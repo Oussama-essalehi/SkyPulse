@@ -116,6 +116,8 @@ services:
       SKYRADAR_MARTS_ROOT: /data/marts
       # Published route of a callsign (aircraft card): adsbdb, or "off" (offline stack).
       ROUTE_LOOKUP: ${ROUTE_LOOKUP:-adsbdb}
+      # Airport weather (latest METAR from aviationweather.gov, no key), or "off".
+      WEATHER_LOOKUP: ${WEATHER_LOOKUP:-metar}
       # Requests per minute towards adsbdb, all clients together (free community service).
       ADSBDB_BUDGET: ${ADSBDB_BUDGET:-300/minute}
       # Public deployment guards (per client; the budget caps all assistant calls).
