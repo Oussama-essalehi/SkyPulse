@@ -21,6 +21,12 @@ selon l'altitude ; zoom sur l'Europe centrale, recherche de BAW131 puis fiche et
 **sombre** (bouton en haut à droite, choix mémorisé, thème du système par défaut) :
 [capture du thème sombre](docs/images/map-dark.png).</sub>
 
+![Tableau de l'aéroport de Paris-CDG : arrivées en approche avec provenance et heure estimée](docs/images/airport-board.png)
+<sub>**Vue aéroport** : un clic sur un aéroport (ou la recherche de son code, `CDG`, `LFPG`, ou
+d'une ville) ouvre son tableau en direct : arrivées (provenance, heure d'arrivée estimée),
+départs (destination, heure de décollage), avions au sol, et les mouvements reconstitués des
+dernières 24 h. Chaque ligne ouvre la fiche de l'avion.</sub>
+
 ---
 
 ## Sommaire
@@ -43,7 +49,7 @@ selon l'altitude ; zoom sur l'Europe centrale, recherche de BAW131 puis fiche et
 | **Reconstitution de vols** | Segmentation des trajectoires et rattachement des extrémités à l'aéroport le plus proche (OurAirports), en SQL, car l'ADS-B ne transporte ni origine ni destination ; **DBSCAN** des décollages / atterrissages hors référentiel (terrains, héliports) |
 | **Enrichissement** | **Base aéronefs OpenSky** (520 000 avions : immatriculation, type, opérateur), types OACI (Doc 8643 : catégorie de sillage), compagnies OpenFlights, routes publiées des callsigns (**adsbdb**, contrôlées contre la position), **vent en altitude** Open-Meteo (250 hPa) |
 | **Détection d'anomalies** | En streaming : squawk 7500/7600/7700, descente rapide, **attente / tourne en rond**, **perte de signal en zone couverte** (position extrapolée + couverture des récepteurs). En batch : **déroutements** (destination habituelle du callsign) et vols atypiques (**Isolation Forest** expliqué) |
-| **Produit & front** | React + MapLibre + **deck.gl** sur buffers binaires, **interpolation sphérique** des positions, WebSocket au format colonne, responsive, thèmes sombre et gris (palette d'altitude contrôlée à 3:1 de contraste minimum sur chaque fond de carte) |
+| **Produit & front** | React + MapLibre + **deck.gl** sur buffers binaires, **interpolation sphérique** des positions, WebSocket au format colonne, responsive, thèmes sombre et gris (palette d'altitude contrôlée à 3:1 de contraste minimum sur chaque fond de carte), **tableau des arrivées / départs de chaque aéroport** (6 000 aéroports affichés selon le zoom) |
 | **BI** | **Superset** sur DuckDB : dashboards *Trafic aérien*, *Modèles ML* et *Compagnies et flotte* versionnés « as code » et importés au démarrage |
 | **Machine learning** | **ETA LightGBM** qui corrige une baseline physique (MAE comparée dans MLflow, barrière de promotion, servie par l'API), avec le vent arrière en altitude évalué par ablation ; **prévision du trafic** par zone (Holt-Winters contre naïf saisonnier) ; registry et historique des métriques dans **MLflow** ([ADR 0008](docs/adr/0008-ml-models.md)) |
 | **IA générative** | **Assistant en français** : boucle d'outils Claude (text-to-SQL + état en direct) ou modèle local Ollama, **garde-fous** sqlglot (SELECT seul, liste blanche, LIMIT forcé, timeout, DuckDB sans accès fichier), jeu d'évaluation de 22 questions suivi dans **MLflow** (précision par type, empreinte du prompt), **serveur MCP** pour Claude Desktop |
@@ -140,7 +146,7 @@ box (`OPENSKY_BBOX`) réduit le coût par appel et donc l'intervalle. Voir
 |---|---|---|
 | `libs/common` | Modèles de messages pydantic, Kafka, logging structlog, S3, schémas Arrow | Une seule source de vérité pour les contrats ([ADR 0004](docs/adr/0004-event-contracts.md)) |
 | `ingestion/` | `FlightDataSource` (adapter) : `OpenSkySource`, `ReplaySource`, générateur synthétique ; producteur Redpanda ; `/metrics` Prometheus | httpx async ; token OAuth2 mis en cache et renouvelé ; cadence fixe ; replay rebasé sur l'heure courante |
-| `api/` | FastAPI : état mémoire, traces, `WS /ws/live`, `/aircraft/{icao24}` (compagnie, type et immatriculation, **départ → destination**, heures de départ et d'arrivée estimée, temps de vol, progression, **ETA**), `/live/region`, `/alerts`, `/stats/live`, proxy `/assistant/ask` | Pas de *consumer group* (vue diffusée à chaque réplique) ; relecture de 20 min au démarrage ; deltas en colonnes, envoyés au plus une fois par seconde ; marts et modèle ETA rechargés à chaud ; recherche dans la base aéronefs par requête ponctuelle DuckDB mise en cache (~15 ms) ; route publiée du callsign (adsbdb, en cache) acceptée seulement si elle est cohérente avec la position et le cap, sinon historique de SkyRadar |
+| `api/` | FastAPI : état mémoire, traces, `WS /ws/live`, `/aircraft/{icao24}` (compagnie, type et immatriculation, **départ → destination**, heures de départ et d'arrivée estimée, temps de vol, progression, **ETA**), `/live/region`, `/airports` et `/airports/{icao}/board` (arrivées, départs et avions au sol en direct, 24 dernières heures), `/alerts`, `/stats/live`, proxy `/assistant/ask`, `/metrics` | Pas de *consumer group* (vue diffusée à chaque réplique) ; relecture de 20 min au démarrage ; deltas en colonnes, envoyés au plus une fois par seconde ; marts et modèle ETA rechargés à chaud ; recherche dans la base aéronefs par requête ponctuelle DuckDB mise en cache (~15 ms) ; route publiée du callsign (adsbdb, en cache) acceptée seulement si elle est cohérente avec la position et le cap, sinon historique de SkyRadar ; tableau d'aéroport : recherches de routes limitées aux avions à moins de 150 km (les plus proches d'abord, 40 par requête, 6 en parallèle, 300 / min au total vers adsbdb), géométrie d'approche ou de montée à défaut |
 | `frontend/` | React, MapLibre (tuiles OpenFreeMap, sans clé), deck.gl | Store hors React, `IconLayer` sur `Float32Array`, *dead reckoning* + fondu de correction ; nginx sert le build et proxifie `/api` (aucun secret côté navigateur) |
 | `streaming/` | `parquet_sink` et `anomaly` | At-least-once + noms de fichiers déterministes ([ADR 0005](docs/adr/0005-sink-delivery-semantics.md)) ; règles pures et testées unitairement ; la perte de signal attend deux snapshots manquants et ne s'active qu'avec un polling authentifié (calibrée sur données réelles) |
 | `pipeline/dbt` | staging → intermediate → marts, features ML | 25 modèles et 77 tests, marts en Parquet externes, dbt seul écrivain ([ADR 0003](docs/adr/0003-duckdb-single-writer.md)) ; aucun package dbt externe (tests génériques maison), donc build hors ligne ; filtrage des positions aberrantes (« téléportations » ADS-B) avant la segmentation des vols ; référentiels optionnels (relation typée vide si un fichier manque) |
@@ -212,6 +218,7 @@ vérifié sur la stack lancée avec de vraies données OpenSky, sauf mention con
 | CI verte, README complet | ✅ workflow lint / types / tests / dbt / ML / éval / images / règles d'alerte / e2e (smoke + Playwright) |
 | Démo publique sûre | ✅ seuls 80/443 publiés, limites de débit par client (assistant, fiche avion, WebSocket), budget journalier de l'assistant, outils d'admin derrière un mot de passe (vérifié avec Caddy en local) |
 | Supervision et rétention | ✅ Prometheus / Grafana / Alertmanager, 8 règles d'alerte testées ; rétention du lake (30 j) et de l'entrepôt (180 j) |
+| Vue aéroport | ✅ tableau en direct (arrivées, départs, sol) et 24 dernières heures ; vérifié sur CDG, Heathrow et JFK en direct, et en CI sur le trafic synthétique |
 
 ## Limites connues
 
@@ -228,6 +235,12 @@ vérifié sur la stack lancée avec de vraies données OpenSky, sauf mention con
   (compagnies, ODbL) ; Open-Meteo (vent, CC BY 4.0) ; OurAirports (domaine public) ; adsbdb
   (routes et avions, interrogé à la demande par l'API, `ROUTE_LOOKUP=off` pour le couper).
   Aucun de ces fichiers n'est redistribué dans ce dépôt : `make seed` les télécharge.
+- **Tableau d'aéroport** : l'ADS-B ne dit pas où va un avion ; les arrivées et départs
+  viennent des routes publiées (vérifiées), des décollages observés et de l'historique, et
+  à défaut de la géométrie (bas, proche, en descente vers l'aéroport). Un avion sans route
+  connue qui survole la zone n'est pas listé, et en mode anonyme (un snapshot toutes les
+  16 min) une bonne partie des arrivées affichées a déjà atterri : le tableau l'indique.
+  Beaucoup d'aéroports ne relaient pas les avions au sol.
 - **Routes publiées** : elles viennent d'une base communautaire (adsbdb) et un callsign peut
   être réutilisé ; elles ne sont affichées que si la position et le cap de l'avion sont
   cohérents avec elles (sur 80 vols de ligne en direct : 85 % ont une route cohérente, les
@@ -268,7 +281,9 @@ credentials, with a polling interval **derived from the daily credit quota**: 96
   shows origin and destination (published route from adsbdb, checked against the live
   position and track, else SkyRadar's own history), departure and estimated arrival times,
   flight progress and an **ETA**, plus the airline, aircraft type and registration
-  from the OpenSky aircraft database (520k aircraft) and OpenFlights;
+  from the OpenSky aircraft database (520k aircraft) and OpenFlights; clicking an airport
+  (or searching its code) opens its **live arrivals / departures board** with the last
+  24 hours of reconstructed movements;
 - a streaming **anomaly detector** raises emergency squawk, rapid-descent, holding-pattern
   and signal-loss alerts (the latter calibrated on real data: it waits for two missing
   snapshots and only runs with authenticated polling);

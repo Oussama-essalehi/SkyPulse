@@ -55,6 +55,16 @@ flowchart LR
    interpolées (*dead reckoning* sphérique à partir de la vitesse et du cap, plafonné à 20 min)
    dans des buffers binaires passés directement à l'`IconLayer` de deck.gl. Quand un nouveau
    fix arrive, l'écart avec la position affichée est résorbé en 3 s, ce qui évite les sauts.
+5. **Vue aéroport** (`GET /airports`, `GET /airports/{icao}/board`) : les aéroports viennent
+   de `dim_airports`, ou directement du fichier OurAirports dans le profil `demo`. Le tableau
+   ne considère que les avions du dernier snapshot : au sol à moins de 6 km, ou en vol et
+   liés à l'aéroport (moins de 150 km, décollage observé, destination habituelle du
+   callsign, route publiée déjà en cache). Leur route est résolue comme pour la fiche avion
+   (décollage observé, route publiée vérifiée contre la position, historique) ; les routes
+   des avions à moins de 150 km sont cherchées dans adsbdb, les plus proches d'abord, avec
+   un budget par requête et un plafond global. Sans route, un avion bas (< 3 500 m) à moins
+   de 60 km qui descend vers l'aéroport est une arrivée, un avion qui monte en s'en
+   éloignant un départ. Les 24 dernières heures viennent de `fct_flights`.
 
 ## Flux analytique
 

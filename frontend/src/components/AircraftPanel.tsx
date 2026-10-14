@@ -16,6 +16,8 @@ interface Props {
   detail: AircraftDetail | null;
   error: string | null;
   onClose: () => void;
+  /** Opened from an airport board: link back to it. */
+  back?: { label: string; onBack: () => void };
 }
 
 const fmt = (value: number | null | undefined, unit: string, digits = 0) =>
@@ -23,13 +25,19 @@ const fmt = (value: number | null | undefined, unit: string, digits = 0) =>
     ? "—"
     : `${value.toLocaleString("fr-FR", { maximumFractionDigits: digits })} ${unit}`;
 
-export function AircraftPanel({ aircraft, detail, error, onClose }: Props) {
+export function AircraftPanel({ aircraft, detail, error, onClose, back }: Props) {
+  const backLink = back && (
+    <button className="back-link" onClick={back.onBack}>
+      ← {back.label}
+    </button>
+  );
   if (!aircraft) {
     return (
       <aside className="aircraft-panel">
         <button className="close" onClick={onClose} aria-label="Fermer">
           ×
         </button>
+        {backLink}
         <p className="muted">Cet avion n'est plus suivi (hors couverture ou atterri).</p>
       </aside>
     );
@@ -46,6 +54,7 @@ export function AircraftPanel({ aircraft, detail, error, onClose }: Props) {
       <button className="close" onClick={onClose} aria-label="Fermer">
         ×
       </button>
+      {backLink}
       <header>
         <h2 style={{ color }}>{aircraft.callsign ?? "Sans callsign"}</h2>
         <span className="muted">

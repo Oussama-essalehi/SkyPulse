@@ -80,6 +80,19 @@ async def test_aircraft_lookup() -> None:
     assert calls == ["/v0/aircraft/40688f"]
 
 
+async def test_request_budget_is_shared_and_nothing_is_cached_when_spent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADSBDB_BUDGET", "2/minute")
+    routes, calls = lookup(lambda r: httpx.Response(404))
+    assert await routes.route("AAA1") is None
+    assert await routes.route("BBB2") is None
+    assert await routes.route("CCC3") is None  # throttled: no request...
+    assert calls == ["/v0/callsign/AAA1", "/v0/callsign/BBB2"]
+    assert routes.is_cached("AAA1")
+    assert not routes.is_cached("CCC3")  # ...and asked again once the budget is back
+
+
 def route(origin: tuple[float, float], destination: tuple[float, float]) -> FlightRoute:
     def airport(code: str, lat: float, lon: float) -> RouteAirport:
         return RouteAirport(code, None, code, None, None, lat, lon)

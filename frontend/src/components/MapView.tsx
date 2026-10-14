@@ -1,5 +1,5 @@
 import { MapboxOverlay } from "@deck.gl/mapbox";
-import { IconLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import type { PickingInfo } from "@deck.gl/core";
 import { Map as MapLibreMap, NavigationControl, setWorkerUrl } from "maplibre-gl";
 // MapLibre v6 loads its tile worker from a separate ES module: let Vite bundle it.
@@ -7,11 +7,18 @@ import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 
+import {
+  AIRPORT_LABEL_ZOOM,
+  AIRPORT_MIN_ZOOM,
+  airportCode,
+  labelledAirports,
+  visibleAirports,
+} from "../lib/airports";
 import { ALERT_COLORS, altitudeColor, palette, type Theme } from "../lib/colors";
 import { PLANE_ATLAS, PLANE_MAPPING } from "../lib/planeIcon";
 import type { AircraftStore, RenderBuffers } from "../lib/store";
 import { MAP_THEMES } from "../lib/theme";
-import type { Alert, Filters } from "../lib/types";
+import type { Airport, Alert, Filters } from "../lib/types";
 
 setWorkerUrl(maplibreWorkerUrl);
 
@@ -21,6 +28,7 @@ export interface FlyTarget {
   lon: number;
   lat: number;
   seq: number;
+  zoom?: number;
 }
 
 interface Props {
@@ -32,6 +40,19 @@ interface Props {
   trail: [number, number, number | null, number][] | null;
   flyTo: FlyTarget | null;
   theme: Theme;
+  airports: Airport[];
+  selectedAirport: string | null;
+  onSelectAirport: (icao: string) => void;
+}
+
+const AIRPORT_RADIUS: Record<Airport["kind"], number> = { L: 5, M: 3.5, S: 2.5 };
+
+/** Thresholds crossed by the zoom: the airport layers only change when this does. */
+function zoomKey(zoom: number): string {
+  const kinds = ["L", "M", "S"] as const;
+  return kinds
+    .map((k) => `${zoom >= AIRPORT_MIN_ZOOM[k] ? 1 : 0}${zoom >= AIRPORT_LABEL_ZOOM[k] ? 1 : 0}`)
+    .join("");
 }
 
 interface AlertPoint {
@@ -60,6 +81,13 @@ export function MapView(props: Props) {
   const mapRef = useRef<MapLibreMap | null>(null);
   const propsRef = useRef(props);
   const buffersRef = useRef<RenderBuffers | null>(null);
+  // Airports drawn / labelled at the current zoom, recomputed when a threshold is crossed.
+  const airportCache = useRef<{
+    key: string;
+    source: Airport[];
+    dots: Airport[];
+    labels: Airport[];
+  } | null>(null);
 
   useEffect(() => {
     propsRef.current = props;
@@ -85,7 +113,18 @@ export function MapView(props: Props) {
     const overlay = new MapboxOverlay({
       interleaved: false,
       pickingRadius: 6,
-      getTooltip: ({ layer, index }: PickingInfo) => {
+      getTooltip: ({ layer, index, object }: PickingInfo) => {
+        if (layer?.id === "airports" && object) {
+          const ap = object as Airport;
+          return {
+            text: `${airportCode(ap)} · ${ap.name}`,
+            style: {
+              ...TOOLTIP_STYLE[propsRef.current.theme],
+              fontSize: "12px",
+              borderRadius: "6px",
+            },
+          };
+        }
         if (layer?.id !== "aircraft" || index < 0) return null;
         const id = buffersRef.current?.ids[index];
         const a = id ? propsRef.current.store.aircraft.get(id) : undefined;
@@ -115,6 +154,23 @@ export function MapView(props: Props) {
       if (time - last < FRAME_MS) return;
       last = time;
       const { store, filters, selected, alerts, trail, onSelect } = propsRef.current;
+      const { airports, selectedAirport, onSelectAirport } = propsRef.current;
+      const key = zoomKey(map.getZoom());
+      let cache = airportCache.current;
+      if (!cache || cache.key !== key || cache.source !== airports) {
+        const zoom = map.getZoom();
+        cache = {
+          key,
+          source: airports,
+          dots: visibleAirports(airports, zoom),
+          labels: labelledAirports(airports, zoom),
+        };
+        airportCache.current = cache;
+      }
+      const highlighted = selectedAirport
+        ? airports.find((a) => a.icao === selectedAirport)
+        : undefined;
+      const colors = palette();
       const buffers = store.frame(filters, selected);
       buffersRef.current = buffers;
       const now = store.now();
@@ -141,6 +197,56 @@ export function MapView(props: Props) {
       const pulse = (time % 1600) / 1600;
 
       const layers = [
+        new ScatterplotLayer<Airport>({
+          id: "airports",
+          data: cache.dots,
+          getPosition: (a) => [a.lon, a.lat],
+          getRadius: (a) => AIRPORT_RADIUS[a.kind],
+          radiusUnits: "pixels",
+          stroked: true,
+          filled: true,
+          getFillColor: colors.airportFill,
+          getLineColor: colors.airport,
+          getLineWidth: 1.5,
+          lineWidthUnits: "pixels",
+          pickable: true,
+          onClick: (info: PickingInfo) => {
+            const ap = info.object as Airport | undefined;
+            if (ap) onSelectAirport(ap.icao);
+            return true;
+          },
+        }),
+        new TextLayer<Airport>({
+          id: "airport-labels",
+          data: cache.labels,
+          getPosition: (a) => [a.lon, a.lat],
+          getText: (a) => airportCode(a),
+          getSize: 11,
+          getColor: colors.airport,
+          getTextAnchor: "start",
+          getAlignmentBaseline: "center",
+          getPixelOffset: [8, 0],
+          fontFamily: "Inter, system-ui, sans-serif",
+          fontWeight: 600,
+          fontSettings: { sdf: true },
+          outlineWidth: 3,
+          outlineColor: [...colors.airportFill, 220],
+          pickable: false,
+        }),
+        highlighted
+          ? new ScatterplotLayer<Airport>({
+              id: "airport-selection",
+              data: [highlighted],
+              getPosition: (a) => [a.lon, a.lat],
+              getRadius: 13,
+              radiusUnits: "pixels",
+              stroked: true,
+              filled: false,
+              getLineWidth: 2.5,
+              lineWidthUnits: "pixels",
+              getLineColor: [...colors.selected, 255],
+            })
+          : null,
         trail && selectedPos
           ? new PathLayer({
               id: "trail",
@@ -239,7 +345,7 @@ export function MapView(props: Props) {
     if (flyTo && mapRef.current) {
       mapRef.current.flyTo({
         center: [flyTo.lon, flyTo.lat],
-        zoom: Math.max(mapRef.current.getZoom(), 6.5),
+        zoom: Math.max(mapRef.current.getZoom(), flyTo.zoom ?? 6.5),
         speed: 1.6,
       });
     }

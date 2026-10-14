@@ -62,6 +62,40 @@ test("live map: aircraft, aircraft card, theme", async ({ page, request }) => {
   expect(errors, errors.join("\n")).toEqual([]);
 });
 
+test("airport board: search, live board, aircraft and back", async ({ page, request }) => {
+  const errors = trackErrors(page);
+  await page.goto("/");
+  await expect(page.locator(".status")).toContainText("En direct", { timeout: 30_000 });
+  await expect.poll(() => aircraftCount(page), { timeout: 60_000 }).toBeGreaterThan(10);
+
+  // LFPG exists in the reference of the replay (synthetic traffic) and in the real one.
+  const search = page.getByRole("searchbox", { name: /aéroport/ });
+  await search.fill("LFPG");
+  await page.locator(".search-results button.search-airport").first().click();
+  const board = page.locator(".airport-panel");
+  await expect(board).toContainText("LFPG");
+  await expect(board.getByText("Chargement du tableau…")).toBeHidden({ timeout: 20_000 });
+
+  // Open the first tab that lists aircraft (arrivals, departures or on the ground).
+  const response = await request.get("/api/airports/LFPG/board");
+  expect(response.ok()).toBeTruthy();
+  const counts = ((await response.json()) as { counts: Record<string, number> }).counts;
+  const tab = (["arrivals", "departures", "ground"] as const).find((t) => counts[t] > 0);
+  expect(tab, "no aircraft around LFPG").toBeDefined();
+  const label = { arrivals: "Arrivées", departures: "Départs", ground: "Au sol" }[tab!];
+  await board.getByRole("tab", { name: label }).click();
+
+  // A row opens the aircraft card, which links back to the board.
+  await board.locator(".board-row").first().click();
+  const card = page.locator(".aircraft-panel:not(.airport-panel)");
+  await expect(card.getByRole("heading", { level: 2 })).toBeVisible();
+  await expect(board).toBeHidden();
+  await card.getByRole("button", { name: /Tableau/ }).click();
+  await expect(board).toContainText("LFPG");
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
 test.describe("light system theme", () => {
   test.use({ colorScheme: "light" });
 

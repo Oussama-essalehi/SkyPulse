@@ -29,6 +29,8 @@ class ApiSettings(BaseSettings):
     # All clients together: caps the LLM bill of a public demo.
     assistant_daily_budget: str = Field("300/day", alias="API_ASSISTANT_BUDGET")
     rate_aircraft: str = Field("60/minute", alias="API_RATE_AIRCRAFT")
+    # Airport board: each request may trigger a few dozen route lookups.
+    rate_airport: str = Field("20/minute", alias="API_RATE_AIRPORT")
     max_ws_per_client: int = Field(4, alias="API_MAX_WS_PER_CLIENT")
 
     @property

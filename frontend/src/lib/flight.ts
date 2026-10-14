@@ -15,10 +15,15 @@ export function clock(epoch: number, timeZone?: string): { utc: string; local: s
   return { utc: `${utc} UTC`, local: local === utc ? null : local };
 }
 
+/** "Paris (Roissy-en-France, Val-d'Oise)" -> "Paris": OurAirports details the commune. */
+export function placeName(city: string | null | undefined): string | null {
+  return city ? city.replace(/\s*\(.*\)\s*$/, "") || city : null;
+}
+
 /** Short code (IATA when known, as on boarding passes) and the place name. */
 export function airportLabel(airport: AirportInfo | null): { code: string; place: string } {
   if (!airport) return { code: "?", place: "Inconnu" };
-  const place = airport.city ?? airport.name ?? airport.icao;
+  const place = placeName(airport.city) ?? airport.name ?? airport.icao;
   return { code: airport.iata ?? airport.icao, place };
 }
 

@@ -82,6 +82,16 @@ def test_aircraft_detail_and_frontend() -> None:
     assert httpx.get(f"{FRONT}/api/health", timeout=5).json()["status"] == "ok"
 
 
+def test_airport_board() -> None:
+    """LFPG is in the replay's reference (synthetic traffic) and in the real one."""
+    wait_for_aircraft()
+    airports = httpx.get(f"{FRONT}/api/airports", timeout=10).json()
+    assert "LFPG" in airports["icao"]
+    board = httpx.get(f"{API}/airports/LFPG/board", timeout=15).json()
+    assert board["airport"]["icao"] == "LFPG"
+    assert set(board["counts"]) == {"arrivals", "departures", "ground"}
+
+
 @pytest.mark.skipif(not FULL, reason="SMOKE_FULL=1 to check the full profile")
 @pytest.mark.parametrize(
     "url",

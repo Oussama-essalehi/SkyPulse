@@ -16,13 +16,22 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from prometheus_client import make_asgi_app
 from pydantic import BaseModel, Field
 
 from skyradar_api import metrics
+from skyradar_api.airports import AirportBoard
 from skyradar_api.config import ApiSettings
 from skyradar_api.consumer import LiveConsumer
 from skyradar_api.enrichment import Enrichment
@@ -61,6 +70,10 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     aircraft_limit = RateLimiter(
         "aircraft", parse_rules(settings.rate_aircraft), "Trop de requêtes : ralentissez."
     )
+    airport_limit = RateLimiter(
+        "airport", parse_rules(settings.rate_airport), "Trop de requêtes : ralentissez."
+    )
+    boards = AirportBoard(state, enrichment, routes)
     ws_clients: dict[str, int] = {}
     consumer = LiveConsumer(
         state,
@@ -176,6 +189,21 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         detail["flight"] = flight
         detail["eta"] = enrichment.eta(entry.state, flight)
         return detail
+
+    @app.get("/airports")
+    async def airports(response: Response) -> dict[str, list[Any]]:
+        """Airports of the reference (column-oriented), for the map layer and the search."""
+        response.headers["Cache-Control"] = "public, max-age=600"
+        return await asyncio.to_thread(boards.airports)
+
+    @app.get("/airports/{icao}/board")
+    async def airport_board(icao: str, request: Request) -> dict[str, Any]:
+        """Live arrivals, departures and aircraft on the ground, and the last 24 hours."""
+        airport_limit.hit(client_ip(request, settings.client_ip_header))
+        board = await boards.board(icao)
+        if board is None:
+            raise HTTPException(404, f"unknown airport {icao}")
+        return board
 
     @app.get("/alerts")
     async def alerts() -> list[dict[str, Any]]:

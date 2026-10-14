@@ -1,4 +1,4 @@
-import type { Alert, AircraftDetail, AssistantAnswer } from "./types";
+import type { AircraftDetail, AirportBoard, AirportColumns, Alert, AssistantAnswer } from "./types";
 
 /**
  * Base URL of the SkyRadar API. Defaults to the same-origin `/api` prefix
@@ -32,6 +32,8 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   aircraft: (icao24: string) => getJson<AircraftDetail>(`/aircraft/${icao24}`),
   alerts: () => getJson<Alert[]>("/alerts"),
+  airports: () => getJson<AirportColumns>("/airports"),
+  airportBoard: (icao: string) => getJson<AirportBoard>(`/airports/${icao}/board`),
   ask: (question: string) =>
     getJson<AssistantAnswer>("/assistant/ask", {
       method: "POST",
