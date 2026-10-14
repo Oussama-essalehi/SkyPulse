@@ -7,12 +7,19 @@
 Requires ANTHROPIC_API_KEY (or OLLAMA_BASE_URL) for a real run; each question is one
 agent run (a few model calls), so a full run costs a few cents with Claude.
 Live questions need the SkyRadar API (SKYRADAR_API_URL), otherwise they are skipped.
+
+With MLFLOW_TRACKING_URI set, every real run is logged to the MLflow experiment
+``assistant-eval``: provider, model, effort and a fingerprint of the system prompt and of
+the question set as parameters; accuracy (overall and per question kind) and latency as
+metrics; the per-question results as an artifact. Prompt or model changes can then be
+compared run against run.
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import json
 import math
 import os
@@ -78,6 +85,62 @@ def grade(question: dict[str, Any], expected: list[Any], result: dict[str, Any])
     return all(v in haystack for v in values)  # set
 
 
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()[:12]
+
+
+def run_metadata(n_questions: int) -> dict[str, Any]:
+    """What defines an eval run: provider, model, effort, prompt and question set."""
+    from skyradar_assistant import agent, main
+
+    provider = main.llm_provider()
+    if provider == "ollama":
+        from skyradar_assistant.ollama import OLLAMA_MODEL
+
+        model = OLLAMA_MODEL
+    else:
+        model = agent.MODEL
+    return {
+        "provider": provider or "none",
+        "model": model,
+        "effort": agent.EFFORT if provider == "anthropic" else "n/a",
+        "prompt_sha": _sha(agent.system_prompt(main.schema())),
+        "questions_sha": _sha(QUESTIONS.read_text()),
+        "n_questions": n_questions,
+    }
+
+
+def summarize(results: list[dict[str, Any]]) -> dict[str, float]:
+    """Accuracy overall and per question kind, latency."""
+    if not results:
+        return {"accuracy": 0.0, "graded": 0.0}
+    metrics = {
+        "accuracy": sum(r["correct"] for r in results) / len(results),
+        "graded": float(len(results)),
+        "latency_mean_s": sum(r["seconds"] for r in results) / len(results),
+        "latency_max_s": max(r["seconds"] for r in results),
+    }
+    for kind in sorted({r["kind"] for r in results}):
+        subset = [r for r in results if r["kind"] == kind]
+        metrics[f"accuracy_{kind}"] = sum(r["correct"] for r in subset) / len(subset)
+    return metrics
+
+
+def track(meta: dict[str, Any], metrics: dict[str, float], payload: dict[str, Any]) -> None:
+    """Log the run to MLflow (no-op without MLFLOW_TRACKING_URI, never fails the eval)."""
+    try:
+        from skyradar_ml.tracking import log_run
+    except ImportError:  # assistant installed alone
+        return
+    log_run(
+        "assistant-eval",
+        f"{meta['provider']}:{meta['model']}",
+        params=meta,
+        metrics=metrics,
+        artifacts={"eval_results.json": payload},
+    )
+
+
 def ask(question: str) -> dict[str, Any]:
     from skyradar_assistant import main
 
@@ -128,6 +191,7 @@ def main_cli() -> int:
         results.append(
             {
                 "id": q["id"],
+                "kind": q["kind"],
                 "correct": ok,
                 "expected": expected[:10],
                 "answer": answer.get("answer"),
@@ -142,14 +206,11 @@ def main_cli() -> int:
         print(f"{len(spec)} reference queries OK")
         return 0
     accuracy = correct / graded if graded else 0.0
-    args.out.write_text(
-        json.dumps(
-            {"accuracy": accuracy, "correct": correct, "graded": graded, "results": results},
-            ensure_ascii=False,
-            indent=2,
-            default=str,
-        )
-    )
+    meta = run_metadata(len(spec))
+    metrics = summarize(results)
+    payload = {"meta": meta, "metrics": metrics, "results": results}
+    args.out.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+    track(meta, metrics, json.loads(json.dumps(payload, default=str)))
     print(f"\nAccuracy: {correct}/{graded} = {accuracy:.0%}  (details: {args.out})")
     return 0
 
