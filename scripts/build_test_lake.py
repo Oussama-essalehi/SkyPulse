@@ -1,8 +1,9 @@
 """Build a small, deterministic local lake for dbt tests / CI (no network needed).
 
 Synthetic traffic -> the real ParquetSink (local filesystem) -> hive-partitioned
-Parquet, plus alerts produced by the real AnomalyDetector, plus an airports.csv
-fixture with the OurAirports columns.
+Parquet, plus alerts produced by the real AnomalyDetector, plus reference fixtures with
+the real file layouts: OurAirports airports.csv, OpenSky aircraft database and ICAO
+aircraft types, OpenFlights airlines.dat.
 
     uv run python scripts/build_test_lake.py --root data/test_lake
     SKYRADAR_LAKE_ROOT=data/test_lake SKYRADAR_REFERENCE_ROOT=data/test_lake/reference dbt build
@@ -13,14 +14,16 @@ from __future__ import annotations
 import argparse
 import csv
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 from pyarrow import fs as pafs
 
 from skyradar_common.parquet import table_to_states
 from skyradar_common.topics import AIRCRAFT_ALERTS, AIRCRAFT_STATES
-from skyradar_ingestion.synthetic import AIRPORTS, generate
+from skyradar_ingestion.synthetic import AIRLINES, AIRPORTS, generate
 from skyradar_streaming.anomaly.detector import AnomalyDetector
 from skyradar_streaming.parquet_sink.sink import ParquetSink
 
@@ -70,6 +73,110 @@ def write_airports(path: Path) -> None:
             )
 
 
+# Header of the OpenSky aircraftDatabase.csv.
+AIRCRAFT_DB_COLUMNS = [
+    "icao24", "registration", "manufacturericao", "manufacturername", "model", "typecode",
+    "serialnumber", "linenumber", "icaoaircrafttype", "operator", "operatorcallsign",
+    "operatoricao", "operatoriata", "owner", "testreg", "registered", "reguntil", "status",
+    "built", "firstflightdate", "seatconfiguration", "engines", "modes", "adsb", "acars",
+    "notes", "categoryDescription",
+]  # fmt: skip
+# (designator, manufacturer, model, ICAO class, wake category)
+AIRCRAFT_TYPES = [
+    ("A320", "AIRBUS", "A320-214", "L2J", "M"),
+    ("B738", "BOEING", "737-8AS", "L2J", "M"),
+    ("A359", "AIRBUS", "A350-941", "L2J", "H"),
+    ("B77W", "BOEING", "777-300ER", "L2J", "H"),
+    ("E190", "EMBRAER", "ERJ 190-100 STD", "L2J", "M"),
+    ("A388", "AIRBUS", "A380-841", "L4J", "J"),
+]
+AIRLINE_NAMES = {
+    "AFR": "Air France", "BAW": "British Airways", "DLH": "Lufthansa",
+    "KLM": "KLM Royal Dutch Airlines", "IBE": "Iberia Airlines", "UAE": "Emirates",
+    "QTR": "Qatar Airways", "DAL": "Delta Air Lines", "UAL": "United Airlines",
+    "AAL": "American Airlines", "ACA": "Air Canada", "JAL": "Japan Airlines",
+    "SIA": "Singapore Airlines", "CPA": "Cathay Pacific", "EZY": "easyJet",
+    "RYR": "Ryanair", "THY": "Turkish Airlines", "SWR": "Swiss International Air Lines",
+    "RAM": "Royal Air Maroc", "QFA": "Qantas",
+}  # fmt: skip
+
+
+def write_aircraft_reference(directory: Path, icao24s: list[str]) -> None:
+    """Every 7th aircraft is unknown to the database, like real-world gaps."""
+    with (directory / "aircraft_database.csv").open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=AIRCRAFT_DB_COLUMNS, quoting=csv.QUOTE_ALL)
+        writer.writeheader()
+        writer.writerow({})  # the real file starts with an empty row
+        for i, icao in enumerate(icao24s):
+            if i % 7 == 0:
+                continue
+            code, maker, model, klass, _ = AIRCRAFT_TYPES[i % len(AIRCRAFT_TYPES)]
+            writer.writerow(
+                {
+                    "icao24": icao,
+                    "registration": f"F-T{i:04d}",
+                    "manufacturericao": maker,
+                    "model": model,
+                    "typecode": code,
+                    "icaoaircrafttype": klass,
+                    "built": f"{2000 + i % 24}-01-01",
+                }
+            )
+    with (directory / "aircraft_types.csv").open("w", newline="") as handle:
+        writer = csv.writer(handle, quoting=csv.QUOTE_ALL)
+        writer.writerow(
+            [
+                "AircraftDescription", "Description", "Designator", "EngineCount",
+                "EngineType", "ManufacturerCode", "ModelFullName", "WTC",
+            ]
+        )  # fmt: skip
+        for code, maker, model, klass, wtc in AIRCRAFT_TYPES:
+            writer.writerow(["LandPlane", klass, code, klass[1], "Jet", maker, model, wtc])
+            # Several model names share a designator in the real file.
+            writer.writerow(
+                ["LandPlane", klass, code, klass[1], "Jet", maker, f"{model} (v2)", wtc]
+            )
+
+
+def write_airlines(path: Path) -> None:
+    """OpenFlights layout: no header, \\N for nulls, defunct duplicates of active codes."""
+    with path.open("w", newline="") as handle:
+        writer = csv.writer(handle, quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
+        writer.writerow([-1, "Unknown", "\\N", "-", "N/A", "\\N", "\\N", "Y"])
+        writer.writerow([1, "Defunct Air France", "\\N", "", "AFR", "", "France", "N"])
+        for i, (code, country) in enumerate(AIRLINES, start=10):
+            name = AIRLINE_NAMES.get(code, code)
+            writer.writerow([i, name, "\\N", code[:2], code, name.upper(), country, "Y"])
+
+
+def write_upper_winds(root: Path, start_time: int, minutes: int) -> None:
+    """Open-Meteo layout (see skyradar_orchestration.weather): a westerly jet over Europe."""
+    first = start_time - start_time % 3600
+    hours = [
+        datetime.fromtimestamp(t, tz=UTC).replace(tzinfo=None)
+        for t in range(first, start_time + minutes * 60 + 3600, 3600)
+    ]
+    rows = [
+        (lat, lon, hour, 20.0 + lat / 2, 270.0, float(start_time))
+        for lat in range(30, 71, 10)
+        for lon in range(-20, 41, 10)
+        for hour in hours
+    ]
+    names = [
+        "grid_lat",
+        "grid_lon",
+        "valid_time",
+        "wind_speed_ms",
+        "wind_direction_deg",
+        "fetched_at",
+    ]
+    table = pa.table(dict(zip(names, zip(*rows, strict=True), strict=True)))
+    day = hours[0].strftime("%Y-%m-%d")
+    target = root / "raw" / "upper_winds" / f"date={day}" / "hour=00" / "winds.parquet"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(table, target)
+
+
 def build(root: Path, minutes: int, start_time: int) -> None:
     if root.exists():
         shutil.rmtree(root)
@@ -92,9 +199,23 @@ def build(root: Path, minutes: int, start_time: int) -> None:
             alert_offset += 1
         if offset and offset % 20_000 == 0:
             sink.flush()  # several files per partition, like the real sink
+    # One ADS-B glitch (a fix 60 degrees away, between two real fixes): the dbt models
+    # must drop it (int_flight_segments), otherwise the step_km test fails.
+    victim = next(s for s in states if not s.on_ground and s.velocity)
+    glitch = victim.model_copy(
+        update={
+            "longitude": (victim.longitude + 240) % 360 - 180,
+            "time_position": (victim.time_position or victim.last_contact) + 5,
+            "last_contact": victim.last_contact + 5,
+        }
+    )
+    sink.add(AIRCRAFT_STATES, 1, 0, glitch.to_bytes())
     sink.flush()
     replay.unlink()
     write_airports(root / "reference" / "airports.csv")
+    write_aircraft_reference(root / "reference", sorted({s.icao24 for s in states}))
+    write_airlines(root / "reference" / "airlines.dat")
+    write_upper_winds(root, start_time, minutes)
     print(f"Test lake ready in {root} ({len(states)} states, {alert_offset} alert events)")
 
 

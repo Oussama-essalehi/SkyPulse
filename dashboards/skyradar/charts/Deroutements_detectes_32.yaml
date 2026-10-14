@@ -1,0 +1,24 @@
+slice_name: "D\xE9routements d\xE9tect\xE9s"
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  query_mode: raw
+  all_columns:
+  - callsign
+  - departure_airport
+  - arrival_airport
+  - usual_arrival_airport
+  - usual_arrival_share
+  - arrival_time
+  order_by_cols:
+  - '["arrival_time", false]'
+  row_limit: 20
+  datasource: 17__table
+query_context: null
+cache_timeout: null
+uuid: 65aba40a-6c52-4355-9ba7-4f8be61aa306
+version: 1.0.0
+dataset_uuid: 622a295b-268a-43e8-b1a4-50b171931be9

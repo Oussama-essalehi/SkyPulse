@@ -1,0 +1,19 @@
+slice_name: Part de vols complets
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  metric:
+    expressionType: SQL
+    sqlExpression: AVG(CASE WHEN is_complete THEN 1.0 ELSE 0 END)
+    label: Vols complets (%)
+  subheader: "d\xE9part ET arriv\xE9e identifi\xE9s"
+  y_axis_format: .1%
+  datasource: 12__table
+query_context: null
+cache_timeout: null
+uuid: 418be017-3fb0-49f5-80d0-6d0ab7f017d1
+version: 1.0.0
+dataset_uuid: 1394ba06-896a-4967-8eb3-ea6814268395

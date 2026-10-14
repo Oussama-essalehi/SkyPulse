@@ -1,0 +1,24 @@
+slice_name: "Gros porteurs observ\xE9s"
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  metric:
+    expressionType: SQL
+    sqlExpression: COUNT(*)
+    label: Avions
+  adhoc_filters:
+  - expressionType: SQL
+    sqlExpression: wake_category in ('H', 'J')
+    clause: WHERE
+  subheader: "cat\xE9gorie de turbulence de sillage H ou J (A350, B777, A380\u2026\
+    )"
+  y_axis_format: ',d'
+  datasource: 22__table
+query_context: null
+cache_timeout: null
+uuid: 6220c06a-c4fc-431b-bd5f-f2ec3fc9e4ac
+version: 1.0.0
+dataset_uuid: ea669223-2af5-4095-b6a4-5d4f26c6b5e7

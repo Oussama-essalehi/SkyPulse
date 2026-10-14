@@ -25,6 +25,11 @@ x-pipeline-env: &pipeline-env
   POSTGRES_USER: ${POSTGRES_USER:-skyradar}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skyradar}
   MLFLOW_TRACKING_URI: http://mlflow:5000
+  # Upper-air winds from Open-Meteo (ETA feature); false for a fully offline stack.
+  WEATHER_ENABLED: ${WEATHER_ENABLED:-true}
+  # Retention: raw lake partitions (days, 0 = keep) and warehouse history (dbt).
+  LAKE_RETENTION_DAYS: ${LAKE_RETENTION_DAYS:-30}
+  WAREHOUSE_HISTORY_DAYS: ${WAREHOUSE_HISTORY_DAYS:-180}
 
 services:
   # ------------------------------------------------------------------ streaming
@@ -108,6 +113,22 @@ services:
       <<: *python-env
       API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
       ASSISTANT_URL: http://assistant:8001
+      SKYRADAR_MARTS_ROOT: /data/marts
+      # Published route of a callsign (aircraft card): adsbdb, or "off" (offline stack).
+      ROUTE_LOOKUP: ${ROUTE_LOOKUP:-adsbdb}
+      # Requests per minute towards adsbdb, all clients together (free community service).
+      ADSBDB_BUDGET: ${ADSBDB_BUDGET:-300/minute}
+      # Public deployment guards (per client; the budget caps all assistant calls).
+      API_RATE_ASSISTANT: ${API_RATE_ASSISTANT:-5/minute,40/day}
+      API_ASSISTANT_BUDGET: ${API_ASSISTANT_BUDGET:-300/day}
+      API_RATE_AIRCRAFT: ${API_RATE_AIRCRAFT:-60/minute}
+      API_RATE_AIRPORT: ${API_RATE_AIRPORT:-20/minute}
+      API_MAX_WS_PER_CLIENT: ${API_MAX_WS_PER_CLIENT:-4}
+    volumes:
+      # Routes and ETA model from the analytics layer (empty in the demo profile).
+      - marts:/data/marts:ro
+      # Airports when the marts are not built (`make seed`; empty folder otherwise).
+      - ./data/reference:/data/reference:ro
     ports:
       - "8000:8000"
     depends_on:
@@ -284,7 +305,9 @@ services:
     environment:
       <<: *python-env
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5-5}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5-5}
+      ASSISTANT_EFFORT: ${ASSISTANT_EFFORT:-medium}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       SKYRADAR_MARTS_ROOT: /data/marts
       SKYRADAR_API_URL: http://api:8000
@@ -293,9 +316,62 @@ services:
     depends_on:
       api: { condition: service_healthy }
 
+  # ---------------------------------------------------------------- monitoring
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: [full]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+    volumes:
+      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus:/prometheus
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    profiles: [full]
+    restart: unless-stopped
+    volumes:
+      - ./infra/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    profiles: [full]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-change-me-grafana}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/skyradar-ops.json
+    volumes:
+      - ./infra/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana:/var/lib/grafana
+    ports:
+      - "3002:3000"
+    depends_on:
+      prometheus: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
 volumes:
   redpanda:
   lake:
   postgres:
   warehouse:
   marts:
+  prometheus:
+  grafana:

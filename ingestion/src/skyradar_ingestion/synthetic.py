@@ -254,6 +254,30 @@ def generate(
         flight.start_offset = -1200.0
         flight.distance = max(flight.distance, 3_000_000.0)
 
+    # Shuttle: the same callsign flies Paris -> Lyon every 30 min (its usual route);
+    # the 4th rotation lands in Nice instead: a diversion for the batch detector.
+    # Only for recordings long enough to contain the 4 rotations (~2 h 30).
+    airports = {code: (code, lat, lon) for code, lat, lon in AIRPORTS}
+    if duration_s >= 5400 + 3300:
+        for k in range(4):
+            diverted = k == 3
+            dest = airports["LFMN" if diverted else "LFLL"]
+            origin = airports["LFPG"]
+            plan.append(
+                _Flight(
+                    icao24=new_icao(),
+                    callsign="SKR100",
+                    country="France",
+                    origin=origin,
+                    dest=dest,
+                    distance=haversine_m(origin[1], origin[2], dest[1], dest[2]),
+                    cruise_alt=9_500.0,
+                    cruise_speed=220.0,
+                    start_offset=float(k * 1800),
+                    squawk="3301",
+                )
+            )
+
     holding = [
         (new_icao(), "BAW286", "United Kingdom", (51.62, -0.18), 2_400.0),  # Bovingdon stack (EGLL)
         (new_icao(), "AFR1734", "France", (49.20, 2.80), 3_000.0),  # East of LFPG

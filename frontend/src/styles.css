@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: #05080d;
   --panel: rgba(8, 13, 22, 0.88);
   --panel-solid: #0a111c;
@@ -10,6 +11,17 @@
   --warning: #f59e0b;
   --info: #38bdf8;
   --ok: #22c55e;
+  --strong: #fff;
+  --on-accent: #001018;
+  --surface: rgba(15, 23, 36, 0.8);
+  --hover: #111c2c;
+  --code-bg: #02050a;
+  --error-text: #fca5a5;
+  --topbar-bg: linear-gradient(180deg, rgba(5, 8, 13, 0.96), rgba(5, 8, 13, 0.75));
+  --vignette: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+  --shadow: rgba(0, 0, 0, 0.5);
+  --banner-bg: rgba(60, 10, 14, 0.9);
+  --attrib-bg: rgba(5, 8, 13, 0.6);
   --radius: 10px;
   --topbar-h: 56px;
   font-family:
@@ -23,6 +35,33 @@
   background: var(--bg);
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Light grey theme (toggle in the top bar, remembered per browser). */
+:root[data-theme="grey"] {
+  color-scheme: light;
+  --bg: #d9dde3;
+  --panel: rgba(241, 243, 246, 0.92);
+  --panel-solid: #eef0f3;
+  --border: #c3cad4;
+  --text: #1f2933;
+  --muted: #5b6878;
+  --accent: #0e7490;
+  --critical: #dc2626;
+  --warning: #b45309;
+  --info: #0369a1;
+  --ok: #15803d;
+  --strong: #0f172a;
+  --on-accent: #fff;
+  --surface: rgba(226, 230, 235, 0.9);
+  --hover: #dde2e8;
+  --code-bg: #e4e8ed;
+  --error-text: #b91c1c;
+  --topbar-bg: linear-gradient(180deg, rgba(236, 239, 243, 0.97), rgba(236, 239, 243, 0.82));
+  --vignette: radial-gradient(ellipse at center, transparent 60%, rgba(60, 70, 85, 0.18) 100%);
+  --shadow: rgba(30, 41, 59, 0.18);
+  --banner-bg: rgba(254, 226, 226, 0.95);
+  --attrib-bg: rgba(236, 239, 243, 0.8);
 }
 
 * {
@@ -56,7 +95,7 @@ button {
   pointer-events: none;
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
+  background: var(--vignette);
 }
 
 .topbar {
@@ -70,7 +109,7 @@ button {
   align-items: center;
   gap: 16px;
   padding: 8px 16px;
-  background: linear-gradient(180deg, rgba(5, 8, 13, 0.96), rgba(5, 8, 13, 0.75));
+  background: var(--topbar-bg);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(8px);
 }
@@ -124,7 +163,7 @@ button {
   background: var(--panel-solid);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 30px var(--shadow);
 }
 
 .search-results button {
@@ -140,7 +179,7 @@ button {
 }
 
 .search-results button:hover {
-  background: #111c2c;
+  background: var(--hover);
 }
 
 .search-results span {
@@ -159,7 +198,7 @@ button {
 .counter strong {
   font-size: 18px;
   font-variant-numeric: tabular-nums;
-  color: #fff;
+  color: var(--strong);
 }
 
 .counter span,
@@ -218,7 +257,7 @@ button {
   padding: 0 5px;
   border-radius: 9px;
   background: var(--info);
-  color: #001018;
+  color: var(--on-accent);
   font-size: 11px;
   font-weight: 700;
   line-height: 18px;
@@ -242,7 +281,7 @@ button {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   backdrop-filter: blur(10px);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 18px 40px var(--shadow);
 }
 
 .side-panel {
@@ -290,7 +329,7 @@ h3 {
 }
 
 .error {
-  color: #fca5a5;
+  color: var(--error-text);
 }
 
 .field {
@@ -353,7 +392,7 @@ textarea {
   border-radius: 8px;
   border: 1px solid var(--border);
   border-left: 3px solid var(--info);
-  background: rgba(15, 23, 36, 0.8);
+  background: var(--surface);
   text-align: left;
   margin-bottom: 8px;
 }
@@ -395,14 +434,14 @@ textarea {
   padding: 8px 14px;
   border-radius: 999px;
   border: 1px solid rgba(239, 68, 68, 0.6);
-  background: rgba(60, 10, 14, 0.9);
+  background: var(--banner-bg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .alert-banner .more {
-  color: #fca5a5;
+  color: var(--error-text);
 }
 
 .pulse {
@@ -433,6 +472,12 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+.aircraft-info {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .facts {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -443,7 +488,7 @@ textarea {
 .facts div {
   padding: 10px;
   border-radius: 8px;
-  background: rgba(15, 23, 36, 0.8);
+  background: var(--surface);
   border: 1px solid var(--border);
 }
 
@@ -460,16 +505,82 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-.route {
+.route-ends {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 20px;
-  font-weight: 600;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.route .arrow {
+.route-end {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.route-end-right {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.route-code {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--strong);
+}
+
+.route-place {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.route-plane {
+  align-self: center;
   color: var(--accent);
+  font-size: 18px;
+  margin-top: -14px;
+}
+
+.route-progress {
+  height: 6px;
+  margin: 10px 0 12px;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.route-progress-bar {
+  height: 100%;
+  background: var(--accent);
+}
+
+.flight-times {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin: 0 0 8px;
+}
+
+.flight-times dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.flight-times dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.flight p {
+  margin: 4px 0 0;
 }
 
 .assistant form {
@@ -484,7 +595,7 @@ textarea {
   border-radius: 8px;
   border: 0;
   background: var(--accent);
-  color: #001018;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
@@ -507,7 +618,7 @@ textarea {
 .answer pre {
   white-space: pre-wrap;
   font-size: 12px;
-  background: #02050a;
+  background: var(--code-bg);
   padding: 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -583,7 +694,7 @@ td {
 }
 
 .maplibregl-ctrl-attrib {
-  background: rgba(5, 8, 13, 0.6) !important;
+  background: var(--attrib-bg) !important;
 }
 
 /* ---- Mobile: panels become bottom sheets ---- */
@@ -631,5 +742,165 @@ td {
 
   .legend {
     display: none;
+  }
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Airport board (click an airport on the map, or search its code). */
+.airport-panel {
+  width: 380px;
+}
+
+.airport-code {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.board-tabs {
+  margin: 12px 0 8px;
+}
+
+.board-tabs button {
+  flex: 1;
+  justify-content: center;
+  padding: 6px 4px;
+  font-size: 12px;
+}
+
+.tab-count {
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.board,
+.movements {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.board-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 92px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+}
+
+.board-row:hover {
+  background: var(--hover);
+}
+
+.board-callsign,
+.board-route,
+.board-time {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.board-callsign span,
+.board-route > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-time {
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-chip {
+  align-self: flex-start;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.board-chip-approach,
+.board-chip-climb {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.board-chip-arrived {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.board-empty {
+  padding: 12px 0;
+}
+
+.board-note {
+  margin: 12px 0 0;
+}
+
+.board-history p {
+  margin: 4px 0 8px;
+}
+
+.movement {
+  display: grid;
+  grid-template-columns: 44px 16px 80px 1fr auto;
+  gap: 6px;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.movement-dir.in {
+  color: var(--ok);
+}
+
+.movement-dir.out {
+  color: var(--accent);
+}
+
+.back-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.search-airport strong {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.airport-badge {
+  color: var(--accent);
+}
+
+@media (max-width: 760px) {
+  .airport-panel {
+    width: 100%;
   }
 }

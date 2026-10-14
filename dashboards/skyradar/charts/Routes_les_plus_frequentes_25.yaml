@@ -1,0 +1,24 @@
+slice_name: "Routes les plus fr\xE9quentes"
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  query_mode: raw
+  all_columns:
+  - route
+  - departure_airport_name
+  - arrival_airport_name
+  - flights
+  - avg_duration_min
+  - avg_distance_km
+  order_by_cols:
+  - '["flights", false]'
+  row_limit: 20
+  datasource: 14__table
+query_context: null
+cache_timeout: null
+uuid: c645c345-c53e-4dd9-ac97-6db30e4ecbb1
+version: 1.0.0
+dataset_uuid: 052153c1-0508-4c68-95c8-48716fde6549

@@ -52,12 +52,14 @@ urls:
 	@echo "  Dagster ......... http://localhost:3001"
 	@echo "  Superset ........ http://localhost:8088  (admin / see .env)"
 	@echo "  MLflow .......... http://localhost:5000"
+	@echo "  Grafana ......... http://localhost:3002  (supervision ; admin / see .env)"
+	@echo "  Prometheus ...... http://localhost:9090"
 	@echo "  Redpanda console  http://localhost:8081"
 	@echo "  Lake (filer) .... http://localhost:8888/buckets/"
 
 # ------------------------------------------------------------------- data
 .PHONY: seed synthetic test-lake
-seed: ## Download reference data (OurAirports) into data/reference
+seed: ## Download reference data (airports, OpenSky aircraft DB, airlines) into data/reference
 	@python3 scripts/seed_reference_data.py
 
 synthetic: ## Generate a synthetic replay file (offline demo)
@@ -67,7 +69,7 @@ test-lake: ## Build a deterministic local lake for dbt tests
 	$(RUN) python scripts/build_test_lake.py --root $(TEST_LAKE)
 
 # ------------------------------------------------------------------- dev
-.PHONY: install test lint format typecheck dbt-parse dbt-build smoke front-dev
+.PHONY: install test lint format typecheck dbt-parse dbt-build eval-assistant smoke test-ui test-monitoring front-dev
 install: ## Install Python (uv) and frontend (npm) dependencies + pre-commit hooks
 	$(UV) sync --all-packages
 	cd frontend && npm ci
@@ -82,6 +84,12 @@ lint: ## Linters and type checks
 	$(RUN) ruff format --check .
 	$(RUN) mypy libs/common/src ingestion/src api/src streaming/src assistant/src ml/src
 	cd frontend && npm run lint && npm run typecheck
+
+MONITORING = docker run --rm -v $(CURDIR)/infra/monitoring:/etc/prometheus:ro -w /etc/prometheus
+test-monitoring: ## Check the Prometheus / Alertmanager configs and unit-test the alert rules
+	$(MONITORING) --entrypoint promtool prom/prometheus:v3.5.0 check config prometheus.yml
+	$(MONITORING) --entrypoint promtool prom/prometheus:v3.5.0 test rules rules.test.yml
+	$(MONITORING) --entrypoint amtool prom/alertmanager:v0.28.1 check-config alertmanager.yml
 
 format: ## Auto-format code
 	$(RUN) ruff check --fix .
@@ -99,8 +107,14 @@ dbt-build: test-lake ## dbt build (models + tests) on the test lake
 	mkdir -p pipeline/dbt/target/marts
 	$(DBT_ENV) $(UV) run --no-sync dbt build
 
+eval-assistant: dbt-build ## Evaluate the assistant (needs ANTHROPIC_API_KEY; DRY=1: references only; logged to MLflow if MLFLOW_TRACKING_URI is set)
+	SKYRADAR_MARTS_ROOT=$(CURDIR)/pipeline/dbt/target/marts $(RUN) python assistant/eval/run_eval.py $(if $(DRY),--dry-run,)
+
 smoke: ## End-to-end smoke test against a running stack (make up-demo first)
 	$(RUN) pytest -m integration tests -v
+
+test-ui: ## Browser tests (Playwright) against a running stack (make up-demo first)
+	cd frontend && SKYRADAR_URL=$${SKYRADAR_URL:-http://localhost:3000} npm run test:e2e
 
 front-dev: ## Frontend dev server (proxies /api to localhost:8000)
 	cd frontend && npm run dev

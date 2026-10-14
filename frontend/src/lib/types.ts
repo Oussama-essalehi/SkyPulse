@@ -90,12 +90,137 @@ export interface AircraftDetail {
   };
   trail: [number, number, number | null, number][];
   alerts: Alert[];
-  flight: {
-    departure?: string | null;
-    arrival?: string | null;
-    departure_time?: number | null;
+  aircraft?: AircraftInfo | null;
+  flight: FlightInfo | null;
+  eta: EtaInfo | null;
+}
+
+/** OpenSky aircraft database + airline of the callsign (null fields when unknown). */
+export interface AircraftInfo {
+  registration?: string | null;
+  typecode?: string | null;
+  manufacturer?: string | null;
+  model?: string | null;
+  type_name?: string | null;
+  wake_category?: string | null;
+  operator?: string | null;
+  built_year?: number | null;
+  airline_icao: string | null;
+  airline_name: string | null;
+  in_registry: boolean;
+}
+
+export interface AirportInfo {
+  icao: string;
+  iata: string | null;
+  name: string | null;
+  city: string | null;
+  country: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+/** Where a departure / destination comes from, most trusted first. */
+export type RouteSource = "reconstructed" | "route_db" | "history";
+
+export interface FlightInfo {
+  departure: AirportInfo | null;
+  arrival: AirportInfo | null;
+  departure_source: RouteSource | null;
+  arrival_source: RouteSource | null;
+  departure_time: number | null;
+  departure_time_estimated: boolean;
+  elapsed_s: number | null;
+  route_km: number | null;
+  flown_km: number | null;
+  remaining_km: number | null;
+  progress: number | null;
+  route_flights: number | null;
+  route_share: number | null;
+  rejected_route: string | null;
+}
+
+export interface EtaInfo {
+  airport: string;
+  remaining_km: number;
+  seconds: number;
+  arrival_estimate: number;
+  naive_seconds: number;
+  method: "lightgbm" | "naive";
+  model_mae_min: number | null;
+}
+
+/** Airport kind: L = large, M = medium, S = small with scheduled service. */
+export type AirportKind = "L" | "M" | "S";
+
+export interface Airport {
+  icao: string;
+  iata: string | null;
+  name: string;
+  city: string | null;
+  country: string | null;
+  lat: number;
+  lon: number;
+  kind: AirportKind;
+}
+
+/** GET /airports: column-oriented, like the live WebSocket payload. */
+export interface AirportColumns {
+  icao: string[];
+  iata: (string | null)[];
+  name: string[];
+  city: (string | null)[];
+  country: (string | null)[];
+  lat: number[];
+  lon: number[];
+  kind: AirportKind[];
+}
+
+export type BoardStatus = "approach" | "en_route" | "climb" | "arrived" | "departing" | "parked";
+
+/** One aircraft on an airport board; `airport` is the other end of its flight. */
+export interface BoardRow {
+  icao24: string;
+  callsign: string | null;
+  airline: string | null;
+  altitude: number | null;
+  velocity: number | null;
+  vertical_rate: number | null;
+  distance_km: number;
+  status: BoardStatus;
+  airport: AirportInfo | null;
+  source?: RouteSource | "geometry" | null;
+  eta?: { seconds: number; arrival_estimate: number; method: string } | null;
+  departure_time?: number | null;
+  departure_time_estimated?: boolean;
+}
+
+export interface Movement {
+  direction: "departure" | "arrival";
+  callsign: string | null;
+  airline: string | null;
+  typecode: string | null;
+  airport_icao: string | null;
+  airport_name: string | null;
+  time: number;
+  duration_min: number | null;
+}
+
+export interface AirportBoard {
+  airport: AirportInfo & { kind: AirportKind };
+  generated_at: number;
+  counts: { arrivals: number; departures: number; ground: number };
+  arrivals: BoardRow[];
+  departures: BoardRow[];
+  ground: BoardRow[];
+  pending_lookups: number;
+  route_lookup: boolean;
+  history: {
+    departures_24h: number;
+    arrivals_24h: number;
+    recent: Movement[];
+    top_airports: { icao: string; name: string | null; flights: number }[];
   } | null;
-  eta: { seconds: number; method: string; airport?: string } | null;
 }
 
 export interface Filters {

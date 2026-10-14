@@ -1,0 +1,6 @@
+# Option A: one VM. Caddy terminates TLS (automatic Let's Encrypt) in front of the
+# frontend container, which already proxies /api (REST + WebSocket) to the API.
+{$SKYRADAR_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}

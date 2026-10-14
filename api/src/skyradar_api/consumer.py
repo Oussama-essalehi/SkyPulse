@@ -63,6 +63,27 @@ class LiveConsumer:
             consumer.seek(tp, found.offset if found is not None else end[tp])
         log.info("live_consumer_assigned", partitions=len(partitions))
 
+    async def supervise(self, max_delay: float = 60.0) -> None:
+        """Run the consumer forever: restart it (with backoff) whenever it stops.
+
+        It runs as a background task of the web server: an unhandled error would kill it
+        silently while the HTTP API keeps answering with an empty map (e.g. when Docker
+        restarts the API before Redpanda and the initial connection retries run out).
+        """
+        failures = 0
+        while True:
+            started = time.monotonic()
+            try:
+                await self.run()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                # A consumer that ran for a while gets a fresh backoff.
+                failures = 1 if time.monotonic() - started > max_delay else failures + 1
+                delay = min(max_delay, 2.0**failures)
+                log.warning("live_consumer_restart", error=repr(exc), retry_in_s=delay)
+                await asyncio.sleep(delay)
+
     async def run(self) -> None:
         consumer = await start_consumer(self._kafka, [], group_id=None, enable_auto_commit=False)
         self._consumer = consumer

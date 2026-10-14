@@ -1,0 +1,233 @@
+dashboard_title: "SkyRadar \u2014 Trafic a\xE9rien"
+description: null
+css: null
+slug: skyradar
+certified_by: null
+certification_details: null
+published: true
+uuid: fb315508-159c-4315-9198-2c9d89ff7b82
+position:
+  DASHBOARD_VERSION_KEY: v2
+  ROOT_ID:
+    type: ROOT
+    id: ROOT_ID
+    children:
+    - GRID_ID
+  GRID_ID:
+    type: GRID
+    id: GRID_ID
+    children:
+    - ROW-0
+    - ROW-1
+    - ROW-2
+    - ROW-3
+    - ROW-4
+    parents:
+    - ROOT_ID
+  HEADER_ID:
+    id: HEADER_ID
+    type: HEADER
+    meta:
+      text: "SkyRadar \u2014 Trafic a\xE9rien"
+  ROW-0:
+    type: ROW
+    id: ROW-0
+    children:
+    - MARKDOWN-intro
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  MARKDOWN-intro:
+    type: MARKDOWN
+    id: MARKDOWN-intro
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-0
+    meta:
+      width: 12
+      height: 20
+      code: "### SkyRadar \u2014 trafic a\xE9rien mondial (donn\xE9es ADS-B OpenSky)\n\
+        \nMarts dbt (Parquet) rafra\xEEchis toutes les heures par Dagster. Les vols\
+        \ sont **reconstitu\xE9s**\n\xE0 partir des positions (l'ADS-B ne transporte\
+        \ ni origine ni destination) : un vol commence\nau d\xE9collage ou apr\xE8\
+        s un trou de plus de 30 min, et ses extr\xE9mit\xE9s sont rattach\xE9es \xE0\
+        \nl'a\xE9roport le plus proche quand l'avion est au sol ou sous 1 500 m.\n"
+  ROW-1:
+    type: ROW
+    id: ROW-1
+    children:
+    - CHART-flights
+    - CHART-complete
+    - CHART-alerts_total
+    - CHART-alerts_by_type
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-flights:
+    type: CHART
+    id: CHART-flights
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-1
+    meta:
+      width: 3
+      height: 30
+      chartId: 17
+      sliceName: "Vols reconstitu\xE9s"
+      uuid: 239743a3-9efe-49ec-a4fb-d8d7aaec6ea6
+  CHART-complete:
+    type: CHART
+    id: CHART-complete
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-1
+    meta:
+      width: 3
+      height: 30
+      chartId: 18
+      sliceName: Part de vols complets
+      uuid: 418be017-3fb0-49f5-80d0-6d0ab7f017d1
+  CHART-alerts_total:
+    type: CHART
+    id: CHART-alerts_total
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-1
+    meta:
+      width: 3
+      height: 30
+      chartId: 19
+      sliceName: "Alertes d\xE9tect\xE9es"
+      uuid: 24c3bbc7-c1a7-478c-9b08-a2ac759b0e51
+  CHART-alerts_by_type:
+    type: CHART
+    id: CHART-alerts_by_type
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-1
+    meta:
+      width: 3
+      height: 30
+      chartId: 20
+      sliceName: Alertes par type
+      uuid: 32f19283-f049-43bf-b618-822082739cb2
+  ROW-2:
+    type: ROW
+    id: ROW-2
+    children:
+    - CHART-traffic
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-traffic:
+    type: CHART
+    id: CHART-traffic
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-2
+    meta:
+      width: 12
+      height: 50
+      chartId: 21
+      sliceName: Trafic mondial heure par heure (par zone)
+      uuid: 3ae8fe3b-48af-4c57-b7ea-268bd914f1ec
+  ROW-3:
+    type: ROW
+    id: ROW-3
+    children:
+    - CHART-countries
+    - CHART-altitudes
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-countries:
+    type: CHART
+    id: CHART-countries
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-3
+    meta:
+      width: 6
+      height: 50
+      chartId: 22
+      sliceName: Top pays d'immatriculation
+      uuid: c2673cf5-e698-4817-876c-0760669374f5
+  CHART-altitudes:
+    type: CHART
+    id: CHART-altitudes
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-3
+    meta:
+      width: 6
+      height: 50
+      chartId: 23
+      sliceName: Distribution des altitudes (positions en vol)
+      uuid: e5611bc4-e606-43ca-afc9-4cbb4accf20e
+  ROW-4:
+    type: ROW
+    id: ROW-4
+    children:
+    - CHART-airports
+    - CHART-routes
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    meta:
+      background: BACKGROUND_TRANSPARENT
+  CHART-airports:
+    type: CHART
+    id: CHART-airports
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-4
+    meta:
+      width: 6
+      height: 60
+      chartId: 24
+      sliceName: "A\xE9roports les plus actifs"
+      uuid: f3c843b3-bc7f-4210-a7f6-692452e3e006
+  CHART-routes:
+    type: CHART
+    id: CHART-routes
+    children: []
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-4
+    meta:
+      width: 6
+      height: 60
+      chartId: 25
+      sliceName: "Routes les plus fr\xE9quentes"
+      uuid: c645c345-c53e-4dd9-ac97-6db30e4ecbb1
+metadata:
+  color_scheme: supersetColors
+  refresh_frequency: 300
+version: 1.0.0

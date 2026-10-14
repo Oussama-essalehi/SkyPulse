@@ -1,0 +1,35 @@
+slice_name: "A\xE9roports les plus actifs"
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  query_mode: aggregate
+  groupby:
+  - airport_icao
+  - airport_name
+  - iso_country
+  metrics:
+  - expressionType: SQL
+    sqlExpression: SUM(movements)
+    label: Mouvements
+  - expressionType: SQL
+    sqlExpression: SUM(departures)
+    label: "D\xE9parts"
+  - expressionType: SQL
+    sqlExpression: SUM(arrivals)
+    label: "Arriv\xE9es"
+  timeseries_limit_metric:
+    expressionType: SQL
+    sqlExpression: SUM(movements)
+    label: Mouvements
+  order_desc: true
+  row_limit: 20
+  time_range: No filter
+  datasource: 13__table
+query_context: null
+cache_timeout: null
+uuid: f3c843b3-bc7f-4210-a7f6-692452e3e006
+version: 1.0.0
+dataset_uuid: 1317397a-3052-465f-bb8a-fe3743b55c66

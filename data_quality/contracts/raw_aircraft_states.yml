@@ -1,0 +1,92 @@
+# Soda Core v4 data contract: raw state vectors written by the streaming sink.
+# Evaluated on the last 24 h of lake partitions (view built by
+# skyradar_orchestration.quality). Each named check becomes a Dagster asset check.
+dataset: skyradar/memory/main/raw_aircraft_states
+
+variables:
+  MIN_ROWS_PER_HOUR:
+    default: 1000
+
+columns:
+  - name: icao24
+    checks:
+      - missing:
+          name: icao24_not_missing
+  - name: latitude
+    checks:
+      - invalid:
+          name: latitude_in_range
+          valid_min: -90
+          valid_max: 90
+  - name: longitude
+    checks:
+      - invalid:
+          name: longitude_in_range
+          valid_min: -180
+          valid_max: 180
+  - name: baro_altitude
+    checks:
+      # Glitches exist in ADS-B; tolerate a tiny share, fail on systematic issues.
+      - invalid:
+          name: altitude_plausible
+          valid_min: -500
+          valid_max: 20000
+          threshold:
+            metric: percent
+            must_be_less_than: 0.5
+  - name: velocity
+    checks:
+      - invalid:
+          name: ground_speed_plausible
+          valid_min: 0
+          valid_max: 400
+          threshold:
+            metric: percent
+            must_be_less_than: 0.5
+
+checks:
+  - row_count:
+      name: lake_not_empty
+      threshold:
+        must_be_greater_than: 0
+  - freshness:
+      name: lake_freshness
+      column: snapshot_ts
+      threshold:
+        unit: minute
+        # Worst case: anonymous polling (16 min) + sink flush interval (5 min).
+        must_be_less_than: 30
+  - failed_rows:
+      # Implied speed between two consecutive fixes of the same aircraft above
+      # 600 m/s (~Mach 1.8) is physically impossible for civil traffic.
+      name: no_teleportation
+      qualifier: teleportation
+      query: |
+        select * from (
+          select icao24, position_epoch, latitude, longitude,
+                 lag(latitude) over w as prev_latitude,
+                 lag(longitude) over w as prev_longitude,
+                 lag(position_epoch) over w as prev_epoch
+          from raw_aircraft_states
+          window w as (partition by icao24 order by position_epoch)
+        )
+        where prev_epoch is not null and position_epoch > prev_epoch
+          and 2 * 6371000 * asin(least(1, sqrt(
+                pow(sin(radians(latitude - prev_latitude) / 2), 2)
+                + cos(radians(prev_latitude)) * cos(radians(latitude))
+                * pow(sin(radians(longitude - prev_longitude) / 2), 2))))
+              / (position_epoch - prev_epoch) > 600
+      rows_tested_query: select count(*) from raw_aircraft_states
+      threshold:
+        metric: percent
+        must_be_less_than: 0.1
+  - failed_rows:
+      # Complete hours (not the current one) with too few rows: the source or the sink stalled.
+      name: hourly_volume
+      qualifier: volume
+      query: |
+        select partition_hour, count(*) as row_count
+        from raw_aircraft_states
+        where partition_hour < (select max(partition_hour) from raw_aircraft_states)
+        group by partition_hour
+        having count(*) < ${var.MIN_ROWS_PER_HOUR}

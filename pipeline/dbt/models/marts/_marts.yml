@@ -22,6 +22,10 @@ models:
           - value_between: {arguments: {min_value: -500, max_value: 20000}}
       - name: is_complete
         description: Both departure and arrival airports identified.
+      - name: airline_icao
+        description: ICAO airline designator from the callsign prefix (AFR1234 -> AFR).
+      - name: aircraft_typecode
+        description: ICAO type designator from the OpenSky aircraft database (A320, B738...).
 
   - name: fct_traffic_hourly
     description: Distinct aircraft per hour, geographic zone and country of registration.
@@ -85,3 +89,79 @@ models:
       - unique_combination:
           arguments:
             columns: [day, altitude_band_m]
+
+  - name: fct_callsign_routes
+    description: Usual arrival airport per (callsign, departure airport).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [callsign, departure_airport]
+    columns:
+      - name: usual_arrival_share
+        data_tests:
+          - value_between: {arguments: {min_value: 0, max_value: 1}}
+
+  - name: fct_diversions
+    description: Flights that landed somewhere else than the usual destination of their callsign.
+    columns:
+      - name: flight_id
+        data_tests: [unique, not_null]
+
+  - name: dim_airports
+    description: Airport reference (OurAirports), one row per ICAO code.
+    columns:
+      - name: airport_icao
+        data_tests: [unique, not_null]
+
+  - name: dim_aircraft_registry
+    description: >
+      OpenSky aircraft database (one row per icao24) with ICAO Doc 8643 type details:
+      registration, type, manufacturer, wake category, operator. Empty when the
+      database was not downloaded (`make seed` with SKYRADAR_SKIP_AIRCRAFT_DB=1).
+    columns:
+      - name: icao24
+        data_tests: [unique, not_null]
+      - name: wake_category
+        description: L(ight), M(edium), H(eavy), J (super), L/M.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['L', 'M', 'H', 'J', 'L/M']
+
+  - name: dim_aircraft
+    description: >
+      Aircraft observed by SkyRadar (one row per icao24), with type and operator from
+      the OpenSky database and the airline of the latest callsign.
+    columns:
+      - name: icao24
+        data_tests: [unique, not_null]
+      - name: airline_icao
+        description: Airline of the latest callsign, else the registered operator.
+      - name: in_registry
+        description: The aircraft is known to the OpenSky aircraft database.
+
+  - name: dim_airlines
+    description: Airlines by ICAO designator (OpenFlights, active airlines preferred).
+    columns:
+      - name: airline_icao
+        data_tests: [unique, not_null]
+
+  - name: fct_airline_activity
+    description: Distinct aircraft per hour and airline (from the callsign prefix).
+    columns:
+      - name: hour
+        data_tests: [not_null]
+      - name: airline_icao
+        data_tests: [not_null]
+      - name: aircraft
+        data_tests:
+          - value_between: {arguments: {min_value: 1, max_value: 100000}}
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [hour, airline_icao]
+
+  - name: fct_upper_winds
+    description: >
+      Last 48 h of the 250 hPa wind grid (Open-Meteo); the API derives the tail-wind
+      feature of live aircraft from it.

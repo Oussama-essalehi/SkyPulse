@@ -1,12 +1,23 @@
 import { altitudeColor, rgbCss } from "../lib/colors";
 import type { Aircraft, AircraftDetail } from "../lib/types";
 import { ALERT_LABELS } from "../lib/labels";
+import { FlightSection } from "./FlightSection";
+
+const WAKE_LABELS: Record<string, string> = {
+  L: "avion léger",
+  "L/M": "léger à moyen",
+  M: "moyen-porteur",
+  H: "gros porteur",
+  J: "très gros porteur (A380)",
+};
 
 interface Props {
   aircraft: Aircraft | undefined;
   detail: AircraftDetail | null;
   error: string | null;
   onClose: () => void;
+  /** Opened from an airport board: link back to it. */
+  back?: { label: string; onBack: () => void };
 }
 
 const fmt = (value: number | null | undefined, unit: string, digits = 0) =>
@@ -14,35 +25,59 @@ const fmt = (value: number | null | undefined, unit: string, digits = 0) =>
     ? "—"
     : `${value.toLocaleString("fr-FR", { maximumFractionDigits: digits })} ${unit}`;
 
-function eta(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.round((seconds % 3600) / 60);
-  return h > 0 ? `${h} h ${m} min` : `${m} min`;
-}
-
-export function AircraftPanel({ aircraft, detail, error, onClose }: Props) {
+export function AircraftPanel({ aircraft, detail, error, onClose, back }: Props) {
+  const backLink = back && (
+    <button className="back-link" onClick={back.onBack}>
+      ← {back.label}
+    </button>
+  );
   if (!aircraft) {
     return (
       <aside className="aircraft-panel">
         <button className="close" onClick={onClose} aria-label="Fermer">
           ×
         </button>
+        {backLink}
         <p className="muted">Cet avion n'est plus suivi (hors couverture ou atterri).</p>
       </aside>
     );
   }
   const color = rgbCss(altitudeColor(aircraft.alt, aircraft.onGround));
   const flight = detail?.flight;
+  const info = detail?.aircraft;
+  const airline = info?.airline_name ?? info?.operator ?? info?.airline_icao;
+  const type = [info?.model ?? info?.type_name, info?.typecode && `(${info.typecode})`]
+    .filter(Boolean)
+    .join(" ");
   return (
     <aside className="aircraft-panel">
       <button className="close" onClick={onClose} aria-label="Fermer">
         ×
       </button>
+      {backLink}
       <header>
         <h2 style={{ color }}>{aircraft.callsign ?? "Sans callsign"}</h2>
         <span className="muted">
           {aircraft.icao24.toUpperCase()} · {aircraft.country}
         </span>
+        {info && (airline || type) && (
+          <p className="aircraft-info">
+            {airline && <strong>{airline}</strong>}
+            {airline && type && " · "}
+            {type}
+            {info.registration && <span className="muted"> · {info.registration}</span>}
+          </p>
+        )}
+        {info && (info.built_year || info.wake_category) && (
+          <p className="muted small">
+            {[
+              info.built_year && `Construit en ${info.built_year}`,
+              info.wake_category && WAKE_LABELS[info.wake_category],
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        )}
       </header>
       {detail?.alerts.map((alert) => (
         <div key={alert.alert_id} className={`alert alert-${alert.severity}`}>
@@ -50,6 +85,7 @@ export function AircraftPanel({ aircraft, detail, error, onClose }: Props) {
           <span className="alert-message">{alert.message}</span>
         </div>
       ))}
+      <FlightSection flight={flight} eta={detail?.eta} onGround={aircraft.onGround} />
       <dl className="facts">
         <div>
           <dt>Altitude</dt>
@@ -76,19 +112,6 @@ export function AircraftPanel({ aircraft, detail, error, onClose }: Props) {
           <dd>{new Date(aircraft.timePosition * 1000).toISOString().slice(11, 19)} UTC</dd>
         </div>
       </dl>
-      <section className="flight">
-        <h3>Vol</h3>
-        <div className="route">
-          <span>{flight?.departure ?? "?"}</span>
-          <span className="arrow">→</span>
-          <span>{flight?.arrival ?? "?"}</span>
-        </div>
-        <p className="muted small">
-          {detail?.eta
-            ? `ETA ${eta(detail.eta.seconds)} (${detail.eta.method})`
-            : "Départ / arrivée reconstitués par le pipeline à partir de l'historique (disponible après accumulation de données)."}
-        </p>
-      </section>
       {error && <p className="error small">{error}</p>}
     </aside>
   );

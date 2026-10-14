@@ -1,0 +1,75 @@
+# Alert rules: the pipeline stops silently otherwise (as when the API outlived Redpanda).
+groups:
+  - name: skyradar
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.job }} ne répond plus"
+          description: "Prometheus n'arrive plus à lire les métriques de {{ $labels.job }} depuis 2 min."
+
+      - alert: IngestionStalled
+        # No snapshot for three polling intervals (48 min anonymous, ~5 min authenticated).
+        expr: >
+          time() - skyradar_ingestion_last_snapshot_timestamp
+          > 3 * skyradar_ingestion_poll_interval_seconds
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Ingestion arrêtée : aucun snapshot OpenSky depuis {{ $value | humanizeDuration }}"
+          description: "Vérifier les logs d'ingestion (OpenSky indisponible, quota épuisé, Redpanda)."
+
+      - alert: OpenSkyCreditsLow
+        expr: skyradar_ingestion_opensky_credits_remaining < 40
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Crédits OpenSky presque épuisés ({{ $value }} restants)"
+          description: "L'intervalle de polling est calculé pour ne pas dépasser le quota : un autre client partage-t-il les identifiants ?"
+
+      - alert: LakeNotWritten
+        # The sink flushes every 5 min: nothing written for 15 min means a stuck sink or storage.
+        expr: time() - skyradar_sink_last_flush_timestamp > 900
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Plus d'écriture dans le lake depuis {{ $value | humanizeDuration }}"
+          description: "parquet-sink bloqué ou stockage objet (SeaweedFS) indisponible."
+
+      - alert: LiveMapStale
+        # The API keeps serving, but its newest snapshot is old: consumer stopped or no data.
+        # scalar(): the two series come from different jobs, labels would never match.
+        expr: >
+          skyradar_api_last_snapshot_age_seconds
+          > 2.5 * scalar(max(skyradar_ingestion_poll_interval_seconds))
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Carte en direct figée (dernier snapshot il y a {{ $value | humanizeDuration }})"
+
+      - alert: ApiKafkaDisconnected
+        expr: skyradar_api_kafka_connected == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "L'API ne lit plus Redpanda"
+          description: "Le consommateur se relance tout seul ; si l'alerte dure, Redpanda est indisponible."
+
+      - alert: SinkConsumerLag
+        # Messages published but not yet committed by the sink (consumer group parquet-sink).
+        expr: >
+          sum(redpanda_kafka_max_offset{redpanda_topic="aircraft.states"})
+          - sum(redpanda_kafka_consumer_group_committed_offset{redpanda_group="parquet-sink", redpanda_topic="aircraft.states"})
+          > 200000
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Le sink Parquet prend du retard ({{ $value }} messages)"
+
+      - alert: AssistantBudgetReached
+        expr: increase(skyradar_api_rate_limited_total{limiter="assistant-budget"}[1h]) > 0
+        labels: { severity: info }
+        annotations:
+          summary: "Quota journalier de l'assistant atteint sur la démo"

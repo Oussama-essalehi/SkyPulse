@@ -1,0 +1,37 @@
+slice_name: "Flotte observ\xE9e par compagnie"
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  query_mode: aggregate
+  groupby:
+  - airline_name
+  metrics:
+  - expressionType: SQL
+    sqlExpression: COUNT(*)
+    label: Avions
+  - expressionType: SQL
+    sqlExpression: COUNT(DISTINCT typecode)
+    label: Types
+  - expressionType: SQL
+    sqlExpression: ROUND(AVG(year(current_date) - built_year), 1)
+    label: "\xC2ge moyen (ans)"
+  adhoc_filters:
+  - expressionType: SQL
+    sqlExpression: airline_name is not null
+    clause: WHERE
+  timeseries_limit_metric:
+    expressionType: SQL
+    sqlExpression: COUNT(*)
+    label: Avions
+  order_desc: true
+  row_limit: 20
+  time_range: No filter
+  datasource: 22__table
+query_context: null
+cache_timeout: null
+uuid: f3bc37d7-4d11-4d36-9a30-31ffa39788f1
+version: 1.0.0
+dataset_uuid: ea669223-2af5-4095-b6a4-5d4f26c6b5e7

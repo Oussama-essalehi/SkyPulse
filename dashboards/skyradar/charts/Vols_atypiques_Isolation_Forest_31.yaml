@@ -1,0 +1,27 @@
+slice_name: Vols atypiques (Isolation Forest)
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  viz_type: table
+  query_mode: raw
+  all_columns:
+  - callsign
+  - icao24
+  - anomaly_score
+  - explanation
+  - last_seen_ts
+  adhoc_filters:
+  - expressionType: SQL
+    sqlExpression: is_outlier
+    clause: WHERE
+  order_by_cols:
+  - '["anomaly_score", false]'
+  row_limit: 20
+  datasource: 20__table
+query_context: null
+cache_timeout: null
+uuid: b9208de0-8f15-4bbd-8519-064a89372659
+version: 1.0.0
+dataset_uuid: 3dc4fc87-77d8-46c4-bc94-83206455afef
