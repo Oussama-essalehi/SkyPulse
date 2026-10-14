@@ -102,3 +102,14 @@ questions:
     question: Y a-t-il des alertes actives en ce moment ?
     kind: live
     tool: get_active_alerts
+  - id: q21_top_airline
+    question: Quelle compagnie a effectué le plus de vols ?
+    kind: top
+    sql: |
+      select airline_name from (select airline_name, count(*) n from fct_flights
+        where airline_name is not null group by 1)
+      qualify rank() over (order by n desc) = 1
+  - id: q22_heavy_aircraft
+    question: Combien d'avions gros porteurs (catégorie de sillage H ou J) ont été observés ?
+    kind: scalar
+    sql: select count(*) from dim_aircraft where wake_category in ('H', 'J')

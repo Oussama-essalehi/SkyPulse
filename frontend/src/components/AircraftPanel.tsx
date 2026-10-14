@@ -33,6 +33,11 @@ export function AircraftPanel({ aircraft, detail, error, onClose }: Props) {
   }
   const color = rgbCss(altitudeColor(aircraft.alt, aircraft.onGround));
   const flight = detail?.flight;
+  const info = detail?.aircraft;
+  const airline = info?.airline_name ?? info?.operator ?? info?.airline_icao;
+  const type = [info?.model ?? info?.type_name, info?.typecode && `(${info.typecode})`]
+    .filter(Boolean)
+    .join(" ");
   return (
     <aside className="aircraft-panel">
       <button className="close" onClick={onClose} aria-label="Fermer">
@@ -43,6 +48,14 @@ export function AircraftPanel({ aircraft, detail, error, onClose }: Props) {
         <span className="muted">
           {aircraft.icao24.toUpperCase()} · {aircraft.country}
         </span>
+        {info && (airline || type) && (
+          <p className="aircraft-info">
+            {airline && <strong>{airline}</strong>}
+            {airline && type && " · "}
+            {type}
+            {info.registration && <span className="muted"> · {info.registration}</span>}
+          </p>
+        )}
       </header>
       {detail?.alerts.map((alert) => (
         <div key={alert.alert_id} className={`alert alert-${alert.severity}`}>

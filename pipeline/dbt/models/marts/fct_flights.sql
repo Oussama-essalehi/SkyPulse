@@ -1,9 +1,13 @@
 -- One reconstructed flight per row (needs at least 3 airborne positions).
 select
-    flight_id,
-    icao24,
-    callsign,
-    origin_country,
+    f.flight_id,
+    f.icao24,
+    f.callsign,
+    f.origin_country,
+    {{ airline_icao('f.callsign') }} as airline_icao,
+    al.airline_name,
+    ac.typecode as aircraft_typecode,
+    ac.model as aircraft_model,
     departure_airport,
     departure_airport_name,
     arrival_airport,
@@ -21,5 +25,7 @@ select
     arrival_airport is not null as has_arrival,
     departure_airport is not null and arrival_airport is not null as is_complete,
     had_emergency_squawk
-from {{ ref('int_flight_endpoints') }}
-where n_airborne_positions >= 3
+from {{ ref('int_flight_endpoints') }} as f
+left join {{ ref('dim_aircraft_registry') }} as ac using (icao24)
+left join {{ ref('stg_airlines') }} as al on al.airline_icao = {{ airline_icao('f.callsign') }}
+where f.n_airborne_positions >= 3

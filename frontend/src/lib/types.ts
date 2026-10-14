@@ -90,8 +90,24 @@ export interface AircraftDetail {
   };
   trail: [number, number, number | null, number][];
   alerts: Alert[];
+  aircraft?: AircraftInfo | null;
   flight: FlightInfo | null;
   eta: EtaInfo | null;
+}
+
+/** OpenSky aircraft database + airline of the callsign (null fields when unknown). */
+export interface AircraftInfo {
+  registration?: string | null;
+  typecode?: string | null;
+  manufacturer?: string | null;
+  model?: string | null;
+  type_name?: string | null;
+  wake_category?: string | null;
+  operator?: string | null;
+  built_year?: number | null;
+  airline_icao: string | null;
+  airline_name: string | null;
+  in_registry: boolean;
 }
 
 export interface FlightInfo {

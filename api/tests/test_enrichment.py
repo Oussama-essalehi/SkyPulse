@@ -121,3 +121,62 @@ def test_no_marts_no_enrichment(tmp_path: Path) -> None:
     assert enrichment.eta(state(), None) is None
     marts(tmp_path)
     assert Enrichment(root=tmp_path).eta(state(on_ground=True), {"arrival": "LFLL"}) is None
+
+
+def registry(root: Path) -> None:
+    write(
+        root,
+        "dim_aircraft_registry",
+        "select * from (values "
+        "('abc123', 'F-HBNA', 'A320', 'Airbus', 'A320-214', 'A320', 'M', 'Jet', 2, "
+        "'Air France', 'AFR', 2012), "
+        "('def456', 'N12345', 'B738', 'Boeing', '737-824', 'B737', 'M', 'Jet', 2, "
+        "null, 'UAL', 2005)) t(icao24, registration, typecode, manufacturer, model, "
+        "type_name, wake_category, engine_type, engine_count, operator, operator_icao, "
+        "built_year)",
+    )
+    write(
+        root,
+        "dim_airlines",
+        "select * from (values ('AFR', 'Air France'), ('UAL', 'United Airlines'), "
+        "('DLH', 'Lufthansa')) t(airline_icao, airline_name)",
+    )
+
+
+def test_aircraft_type_and_airline_from_callsign(tmp_path: Path) -> None:
+    marts(tmp_path)
+    registry(tmp_path)
+    enrichment = Enrichment(root=tmp_path)
+    info = enrichment.aircraft(state(callsign="DLH42"))
+    assert info is not None
+    assert info["registration"] == "F-HBNA"
+    assert info["typecode"] == "A320"
+    assert info["in_registry"]
+    # The callsign wins over the registered operator (wet lease, codeshare...).
+    assert (info["airline_icao"], info["airline_name"]) == ("DLH", "Lufthansa")
+
+
+def test_aircraft_falls_back_to_operator_and_handles_unknowns(tmp_path: Path) -> None:
+    marts(tmp_path)
+    registry(tmp_path)
+    enrichment = Enrichment(root=tmp_path)
+    # Private callsign (registration): airline = registered operator.
+    info = enrichment.aircraft(state(icao24="def456", callsign="N12345"))
+    assert info is not None
+    assert (info["airline_icao"], info["airline_name"]) == ("UAL", "United Airlines")
+    # Unknown aircraft with an airline callsign: airline only.
+    info = enrichment.aircraft(state(icao24="ffffff", callsign="AFR7"))
+    assert info is not None
+    assert not info["in_registry"]
+    assert info["airline_name"] == "Air France"
+    assert "typecode" not in info
+    # Unknown aircraft, no airline: nothing to show.
+    assert enrichment.aircraft(state(icao24="eeeeee", callsign="FHBXY")) is None
+
+
+def test_aircraft_without_reference_marts(tmp_path: Path) -> None:
+    assert Enrichment(root=tmp_path).aircraft(state(callsign="AFR7")) == {
+        "airline_icao": "AFR",
+        "airline_name": None,
+        "in_registry": False,
+    }

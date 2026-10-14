@@ -33,7 +33,8 @@ TABLE_DOCS: dict[str, str] = {
     "fct_flights": "Vols reconstitués (un par ligne) : icao24, callsign, origin_country (pays "
     "d'immatriculation), departure_airport / arrival_airport (codes ICAO, NULL si inconnus), "
     "departure_time / arrival_time (UTC), duration_min, distance_km, max_altitude_m, "
-    "is_complete (départ ET arrivée identifiés).",
+    "is_complete (départ ET arrivée identifiés), airline_icao / airline_name (compagnie du "
+    "callsign), aircraft_typecode (A320, B738...), aircraft_model.",
     "fct_traffic_hourly": "Avions distincts par heure (hour, UTC), zone géographique "
     "(Europe, North America, Asia, ...) et pays d'immatriculation : aircraft, airborne_aircraft, "
     "positions. Sommer sur origin_country pour un total par zone.",
@@ -49,6 +50,15 @@ TABLE_DOCS: dict[str, str] = {
     "fct_diversions": "Vols arrivés ailleurs que la destination habituelle de leur callsign.",
     "dim_airports": "Aéroports : airport_icao, airport_iata, airport_name, municipality, "
     "iso_country (code ISO 2 lettres), latitude, longitude.",
+    "dim_aircraft": "Avions observés par SkyRadar (un par icao24) : registration, typecode, "
+    "manufacturer, model, wake_category (L/M/H/J), operator, airline_icao / airline_name "
+    "(compagnie du dernier callsign), built_year, first_seen_ts, last_seen_ts.",
+    "dim_aircraft_registry": "Base aéronefs OpenSky complète (~500 000 avions, observés ou "
+    "non) : icao24, registration, typecode, manufacturer, model, operator, built_year.",
+    "dim_airlines": "Compagnies : airline_icao (AFR), airline_iata (AF), airline_name, "
+    "airline_country.",
+    "fct_airline_activity": "Avions distincts par heure et par compagnie (airline_icao, "
+    "airline_name) : aircraft, airborne_aircraft.",
     "ml_traffic_forecast": "Trafic par zone : kind = 'actual' (observé) ou 'forecast' "
     "(prévision des prochaines heures), value, model.",
     "ml_flight_anomaly_scores": "Score Isolation Forest par vol (anomaly_score, is_outlier, "
