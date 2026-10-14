@@ -95,6 +95,20 @@ make up-demo              # carte en direct uniquement (Redpanda, ingestion, API
 make replay               # démo hors ligne : rejoue data/replay/replay.parquet (ou trafic synthétique)
 ```
 
+**Windows (PowerShell, sans `make`)** : Docker Desktop doit être lancé. Chaque cible `make`
+correspond à des commandes simples :
+
+```powershell
+Copy-Item .env.example .env                          # une seule fois
+python scripts/seed_reference_data.py                # make seed (aéroports, base aéronefs, compagnies)
+docker compose --profile full up -d --build --wait   # make up
+docker compose --profile demo up -d --build --wait   # make up-demo
+$env:SOURCE="replay"; docker compose --profile demo up -d --build --wait   # make replay
+docker compose --profile full --profile demo down    # make down
+```
+
+Avec WSL2 (Ubuntu), les commandes `make` fonctionnent telles quelles.
+
 | URL | Service |
 |---|---|
 | http://localhost:3000 | Carte en direct |
