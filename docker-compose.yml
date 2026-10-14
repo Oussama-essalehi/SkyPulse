@@ -25,6 +25,8 @@ x-pipeline-env: &pipeline-env
   POSTGRES_USER: ${POSTGRES_USER:-skyradar}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skyradar}
   MLFLOW_TRACKING_URI: http://mlflow:5000
+  # Upper-air winds from Open-Meteo (ETA feature); false for a fully offline stack.
+  WEATHER_ENABLED: ${WEATHER_ENABLED:-true}
 
 services:
   # ------------------------------------------------------------------ streaming

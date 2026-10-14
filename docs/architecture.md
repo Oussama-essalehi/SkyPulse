@@ -68,15 +68,21 @@ flowchart LR
      de 30 min, au décollage, ou après un saut impossible ;
    - `int_flight_endpoints` : aéroport le plus proche (grille de 0,5° puis haversine) si
      l'extrémité est au sol ou sous 1 500 m, à moins de 15 km ;
-   - marts `fct_flights`, `fct_traffic_hourly`, `fct_airport_activity`, `fct_routes`,
-     `fct_alerts_history`, `fct_altitude_profile`, `fct_callsign_routes`, `fct_diversions`,
-     `dim_airports`, et features `ml_eta_features` / `ml_flight_features`, écrits en
-     Parquet (ADR 0003).
+   - référentiels (`make seed`, optionnels) : OurAirports, base aéronefs OpenSky et types
+     OACI (`dim_aircraft_registry`, `dim_aircraft`), compagnies OpenFlights
+     (`dim_airlines`, `fct_airline_activity`) ; vent à 250 hPa d'Open-Meteo
+     (`stg_upper_winds`, `fct_upper_winds`) ;
+   - marts `fct_flights` (avec compagnie et type d'avion), `fct_traffic_hourly`,
+     `fct_airport_activity`, `fct_routes`, `fct_alerts_history`, `fct_altitude_profile`,
+     `fct_callsign_routes`, `fct_diversions`, `dim_airports`, et features
+     `ml_eta_features` (dont le vent arrière) / `ml_flight_features` /
+     `ml_unmatched_endpoints`, écrits en Parquet (ADR 0003).
 3. **Dagster** (ADR 0007, 0008) :
    - le lake brut est déclaré en *external assets* ; les tests dbt et les contrats Soda Core
      deviennent des *asset checks* ;
-   - `dbt_hourly` (hh:05) : dbt, checks, puis scoring ML (`traffic_forecast`,
-     `trajectory_outliers`, `diversion_alerts`) ; les déroutements et vols atypiques
+   - `dbt_hourly` (hh:05) : vent en altitude (`lake/upper_winds`, une récupération par
+     jour), dbt, checks, puis scoring ML (`traffic_forecast`, `trajectory_outliers`,
+     `endpoint_clusters`, `diversion_alerts`) ; les déroutements et vols atypiques
      récents sont publiés sur `aircraft.alerts` ;
    - `ml_daily` (03:30) : `eta_model` et `flight_reconstruction_quality`, loggués dans
      MLflow ; le modèle ETA promu est écrit dans le volume des marts, que l'API recharge ;
