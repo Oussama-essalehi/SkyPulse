@@ -18,11 +18,20 @@ baseline simple**.
 | Trafic par zone | **Holt-Winters** (statsmodels, saisonnalité 24 h) dès 48 h d'historique, Holt amorti avant | naïf saisonnier (même heure la veille) ou dernière valeur | MAE sur les dernières heures (*holdout*), puis réentraînement complet et prévision à 6 h |
 | Vols atypiques | **Isolation Forest** (RobustScaler + 200 arbres, contamination 1 %) sur des caractéristiques de trajectoire (rectitude, taux de virage, altitude max, vitesse moyenne…) | — (non supervisé) | explication par z-score robuste des caractéristiques les plus éloignées de la médiane |
 | Déroutements | règle dbt : arrivée différente de la destination habituelle du callsign (≥ 3 vols, part ≥ 60 %) | — | publiés comme alertes `diversion` |
+| Terrains hors référentiel | **DBSCAN** (métrique haversine, eps 3 km, 3 points min.) sur les décollages / atterrissages à plus de 15 km de tout aéroport retenu | — | part des points regroupés ; chaque cluster est étiqueté avec l'entrée OurAirports la plus proche, tous types (aérodrome, héliport…) |
 
 - **Correction de la baseline plutôt que régression directe** : sur le lake de test, LightGBM
   appris directement sur la durée restante faisait bien *pire* que la physique (MAE 4,7 min
   contre 1,7 min) ; en apprenant le ratio, il reste proche de la baseline quand il ne sait
   rien et apprend ce qu'elle ignore (descente, approche, attente) : MAE 0,21 min.
+- **Vent en altitude (Open-Meteo)** : la vitesse sol contient déjà le vent *actuel* ; le
+  vent arrière à 250 hPa (grille de 10°, horaire) n'apporte de l'information que s'il varie
+  le long de la route. Plutôt que de le supposer, l'entraînement réentraîne le même modèle
+  sans cette variable et logue `mae_min_without_wind` : la variable doit prouver son utilité.
+  Sur le lake de test (vols synthétiques sans vent), l'écart est nul, comme attendu.
+- **DBSCAN plutôt que k-means** : le nombre de terrains est inconnu et le bruit (perte de
+  signal à basse altitude) doit rester hors cluster ; DBSCAN avec la distance haversine ne
+  demande qu'un rayon physique (3 km) et un effectif minimal.
 - **Seuils d'historique** (`ML_ETA_MIN_FLIGHTS=200`, 12 h de série pour la prévision,
   50 vols pour l'Isolation Forest) : en dessous, l'asset Dagster se termine en `skipped` avec
   la raison, et l'API sert l'ETA naïve.

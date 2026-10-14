@@ -12,9 +12,11 @@ analytics, ML et IA générative.
 nuit européenne, couleur selon l'altitude, recherche d'un vol puis fiche. En journée, la carte
 en suit plus de 11 000 ([capture](docs/images/map.png)).</sub>
 
-| Fiche avion + alerte détectée en direct | Mobile |
+| Fiche avion : compagnie, type, immatriculation, trace | Mobile |
 |---|---|
-| ![Alerte « descente rapide » sur un avion réel, trace et fiche](docs/images/aircraft-alert.png) | <img src="docs/images/mobile.png" width="220" alt="Version mobile"> |
+| ![AFR090, Boeing 777-300ER d'Air France en approche de Miami : fiche et trace](docs/images/aircraft-panel.png) | <img src="docs/images/mobile.png" width="220" alt="Version mobile"> |
+
+<sub>Une alerte détectée en direct (descente rapide) : [capture](docs/images/aircraft-alert.png).</sub>
 
 ---
 
@@ -35,12 +37,13 @@ en suit plus de 11 000 ([capture](docs/images/map.png)).</sub>
 | **Data engineering temps réel** | Client OpenSky OAuth2 avec **intervalle de polling calculé à partir du quota de crédits**, backoff sur les 429, Redpanda (Kafka), contrats d'événements pydantic, sink Parquet *at-least-once* avec commits d'offsets maîtrisés |
 | **Lakehouse & analytics engineering** | Parquet partitionné `date=/hour=` sur stockage S3, **dbt-duckdb** (staging incrémental → intermediate → marts), tests dbt, marts en Parquet pour respecter la contrainte mono-écrivain de DuckDB |
 | **Orchestration & qualité** | **Dagster** : lake déclaré en *external assets*, tests dbt et **contrats Soda Core** (fraîcheur, volume, téléportation) exposés en *asset checks*, schedules horaire / quotidien / maintenance, compaction des petits fichiers Parquet |
-| **Reconstitution de vols** | Segmentation des trajectoires et rattachement des extrémités à l'aéroport le plus proche (OurAirports), en SQL, car l'ADS-B ne transporte ni origine ni destination |
+| **Reconstitution de vols** | Segmentation des trajectoires et rattachement des extrémités à l'aéroport le plus proche (OurAirports), en SQL, car l'ADS-B ne transporte ni origine ni destination ; **DBSCAN** des décollages / atterrissages hors référentiel (terrains, héliports) |
+| **Enrichissement** | **Base aéronefs OpenSky** (520 000 avions : immatriculation, type, opérateur), types OACI (Doc 8643 : catégorie de sillage), compagnies OpenFlights, **vent en altitude** Open-Meteo (250 hPa) |
 | **Détection d'anomalies** | En streaming : squawk 7500/7600/7700, descente rapide, **attente / tourne en rond**, **perte de signal en zone couverte** (position extrapolée + couverture des récepteurs). En batch : **déroutements** (destination habituelle du callsign) et vols atypiques (**Isolation Forest** expliqué) |
 | **Produit & front** | React + MapLibre + **deck.gl** sur buffers binaires, **interpolation sphérique** des positions, WebSocket au format colonne, responsive |
-| **BI** | **Superset** sur DuckDB : dashboards *Trafic aérien* et *Modèles ML* versionnés « as code » et importés au démarrage |
-| **Machine learning** | **ETA LightGBM** qui corrige une baseline physique (MAE comparée dans MLflow, barrière de promotion, servie par l'API) ; **prévision du trafic** par zone (Holt-Winters contre naïf saisonnier) ; registry et historique des métriques dans **MLflow** ([ADR 0008](docs/adr/0008-ml-models.md)) |
-| **IA générative** | **Assistant en français** : boucle d'outils Claude (text-to-SQL + état en direct) ou modèle local Ollama, **garde-fous** sqlglot (SELECT seul, liste blanche, LIMIT forcé, timeout, DuckDB sans accès fichier), jeu d'évaluation de 20 questions, **serveur MCP** pour Claude Desktop |
+| **BI** | **Superset** sur DuckDB : dashboards *Trafic aérien*, *Modèles ML* et *Compagnies et flotte* versionnés « as code » et importés au démarrage |
+| **Machine learning** | **ETA LightGBM** qui corrige une baseline physique (MAE comparée dans MLflow, barrière de promotion, servie par l'API), avec le vent arrière en altitude évalué par ablation ; **prévision du trafic** par zone (Holt-Winters contre naïf saisonnier) ; registry et historique des métriques dans **MLflow** ([ADR 0008](docs/adr/0008-ml-models.md)) |
+| **IA générative** | **Assistant en français** : boucle d'outils Claude (text-to-SQL + état en direct) ou modèle local Ollama, **garde-fous** sqlglot (SELECT seul, liste blanche, LIMIT forcé, timeout, DuckDB sans accès fichier), jeu d'évaluation de 22 questions suivi dans **MLflow** (précision par type, empreinte du prompt), **serveur MCP** pour Claude Desktop |
 | **Industrialisation** | Docker multi-stage, healthchecks, profils compose, Makefile, CI GitHub Actions (lint, typage, tests, `dbt build`, ML et éval de l'assistant sur données de test, build des images, test e2e), [guide de déploiement](docs/deployment.md) (VM + Caddy, ou Cloudflare Pages + Fly.io + Kafka managé) |
 
 ## Architecture
@@ -48,6 +51,8 @@ en suit plus de 11 000 ([capture](docs/images/map.png)).</sub>
 ```mermaid
 flowchart LR
   OS[OpenSky REST<br/>OAuth2 · quota] --> ING
+  REF[Référentiels<br/>OurAirports · base aéronefs OpenSky<br/>OpenFlights] --> DBT
+  OM[Open-Meteo<br/>vent 250 hPa] --> S3
   RP[Replay Parquet] --> ING
   ING[ingestion] --> K[(Redpanda<br/>aircraft.states · .snapshots · .alerts)]
   K --> API[FastAPI<br/>état mémoire] -- WebSocket --> FE[React · MapLibre · deck.gl]
@@ -92,6 +97,8 @@ make replay               # démo hors ligne : rejoue data/replay/replay.parquet
 
 Autres commandes : `make record` (enregistre 30 min de données réelles pour le replay),
 `make test`, `make lint`, `make dbt-build` (dbt sur un lake de test déterministe),
+`make seed` (référentiels : aéroports, base aéronefs OpenSky ~95 Mo, compagnies ;
+`SKYRADAR_SKIP_AIRCRAFT_DB=1` pour sauter la base aéronefs),
 `make eval-assistant` (évaluation de l'assistant ; `DRY=1` pour ne vérifier que les requêtes
 de référence, sans appel au LLM), `make smoke` (tests e2e sur la stack lancée),
 `make logs S=ingestion`, `make down`, `make clean`.
@@ -125,13 +132,13 @@ box (`OPENSKY_BBOX`) réduit le coût par appel et donc l'intervalle. Voir
 |---|---|---|
 | `libs/common` | Modèles de messages pydantic, Kafka, logging structlog, S3, schémas Arrow | Une seule source de vérité pour les contrats ([ADR 0004](docs/adr/0004-event-contracts.md)) |
 | `ingestion/` | `FlightDataSource` (adapter) : `OpenSkySource`, `ReplaySource`, générateur synthétique ; producteur Redpanda ; `/metrics` Prometheus | httpx async ; token OAuth2 mis en cache et renouvelé ; cadence fixe ; replay rebasé sur l'heure courante |
-| `api/` | FastAPI : état mémoire, traces, `WS /ws/live`, `/aircraft/{icao24}` (avec départ, destination probable et **ETA**), `/live/region`, `/alerts`, `/stats/live`, proxy `/assistant/ask` | Pas de *consumer group* (vue diffusée à chaque réplique) ; relecture de 20 min au démarrage ; deltas en colonnes, envoyés au plus une fois par seconde ; marts et modèle ETA rechargés à chaud |
+| `api/` | FastAPI : état mémoire, traces, `WS /ws/live`, `/aircraft/{icao24}` (compagnie, type et immatriculation, départ, destination probable, **ETA**), `/live/region`, `/alerts`, `/stats/live`, proxy `/assistant/ask` | Pas de *consumer group* (vue diffusée à chaque réplique) ; relecture de 20 min au démarrage ; deltas en colonnes, envoyés au plus une fois par seconde ; marts et modèle ETA rechargés à chaud ; recherche dans la base aéronefs par requête ponctuelle DuckDB mise en cache (~15 ms) |
 | `frontend/` | React, MapLibre (tuiles OpenFreeMap, sans clé), deck.gl | Store hors React, `IconLayer` sur `Float32Array`, *dead reckoning* + fondu de correction ; nginx sert le build et proxifie `/api` (aucun secret côté navigateur) |
 | `streaming/` | `parquet_sink` et `anomaly` | At-least-once + noms de fichiers déterministes ([ADR 0005](docs/adr/0005-sink-delivery-semantics.md)) ; règles pures et testées unitairement ; la perte de signal attend deux snapshots manquants et ne s'active qu'avec un polling authentifié (calibrée sur données réelles) |
-| `pipeline/dbt` | staging → intermediate → marts, features ML | 15 modèles, marts en Parquet externes, dbt seul écrivain ([ADR 0003](docs/adr/0003-duckdb-single-writer.md)) ; aucun package dbt externe (tests génériques maison), donc build hors ligne ; filtrage des positions aberrantes (« téléportations » ADS-B) avant la segmentation des vols |
-| `pipeline/dagster` | Assets dbt, asset checks dbt + Soda, assets ML (entraînement quotidien, scoring horaire), compaction | `QueuedRunCoordinator` limité à 1 run (DuckDB mono-écrivain) ; métadonnées dans Postgres |
+| `pipeline/dbt` | staging → intermediate → marts, features ML | 25 modèles et 77 tests, marts en Parquet externes, dbt seul écrivain ([ADR 0003](docs/adr/0003-duckdb-single-writer.md)) ; aucun package dbt externe (tests génériques maison), donc build hors ligne ; filtrage des positions aberrantes (« téléportations » ADS-B) avant la segmentation des vols ; référentiels optionnels (relation typée vide si un fichier manque) |
+| `pipeline/dagster` | Assets dbt, asset checks dbt + Soda, vent en altitude (Open-Meteo, une fois par jour), assets ML (entraînement quotidien, scoring horaire), compaction | `QueuedRunCoordinator` limité à 1 run (DuckDB mono-écrivain) ; métadonnées dans Postgres |
 | `data_quality/` | Contrats **Soda Core** v4 (`raw_aircraft_states`, `fct_flights`) | Déclaratifs, exécutés sur une connexion DuckDB en mémoire ([ADR 0007](docs/adr/0007-data-quality-tool.md)) |
-| `ml/` | ETA, prévision de trafic, Isolation Forest, qualité de la reconstitution | Seuils d'historique (`skipped` tant que les données manquent), baseline systématique, écriture atomique des sorties, tracking MLflow non bloquant ([ADR 0008](docs/adr/0008-ml-models.md)) |
+| `ml/` | ETA, prévision de trafic, Isolation Forest, DBSCAN des extrémités hors aéroport, qualité de la reconstitution | Seuils d'historique (`skipped` tant que les données manquent), baseline systématique, écriture atomique des sorties, tracking MLflow non bloquant ([ADR 0008](docs/adr/0008-ml-models.md)) |
 | `assistant/` | Boucle d'outils Claude (*tool runner* du SDK Anthropic) ou Ollama, garde-fous SQL, serveur MCP, jeu d'évaluation | Défense en profondeur : parsing sqlglot + liste blanche + `LIMIT` + DuckDB `enable_external_access=false` + timeout ; le LLM ne voit que des outils ([docs/mcp.md](docs/mcp.md)) |
 | `dashboards/` | Dashboards Superset « as code » (`build_dashboards.py`) exportés en YAML | Versionnés, diffables, importés automatiquement au démarrage de Superset |
 | `deploy/` | Caddy, surcharge compose de production, configurations Fly.io | Voir [docs/deployment.md](docs/deployment.md) |
@@ -148,6 +155,12 @@ générique S3.
 par zone, les pays et les altitudes sont alimentés tout de suite ; les tableaux de vols,
 d'aéroports et de routes se remplissent après quelques heures d'historique.</sub>
 
+![Dashboard Compagnies et flotte sur les données réelles](docs/images/superset-fleet.png)
+<sub>*Compagnies et flotte*, sur les données réelles : 77 % des ~14 000 avions observés sont
+identifiés dans la base OpenSky (type, immatriculation), la compagnie vient du callsign.
+Capture prise après 3 h d'ingestion : les vols reconstitués par compagnie n'apparaissent
+qu'avec plus d'historique.</sub>
+
 ![Dashboard des modèles de ML](docs/images/superset-ml.png)
 <sub>*Modèles ML* : MAE de l'ETA contre la baseline, historique des métriques, trafic observé
 et prévu, vols atypiques, déroutements. **Capture sur le lake de test synthétique** (les
@@ -157,9 +170,9 @@ illustrent le dashboard, pas la performance en conditions réelles.</sub>
 ### Orchestration
 
 ![Graphe des assets Dagster](docs/images/dagster-lineage.png)
-<sub>Groupes d'assets Dagster : lake brut → modèles dbt (avec 67 asset checks dbt et Soda,
-tous verts sur les données réelles) → scoring ML horaire, entraînement quotidien, et
-maintenance (compaction du lake).</sub>
+<sub>Groupes d'assets Dagster : lake brut (dont le vent en altitude) → modèles dbt (91 asset
+checks dbt et Soda, tous verts sur les données réelles) → scoring ML horaire, entraînement
+quotidien, et maintenance (compaction du lake).</sub>
 
 ## État d'avancement
 
@@ -170,14 +183,14 @@ vérifié sur la stack lancée avec de vraies données OpenSky, sauf mention con
 | Critère d'acceptation | État |
 |---|---|
 | `make up` / `make up-demo` démarrent sans erreur | ✅ tous les services *healthy* |
-| Milliers d'avions réels, fluides, fiche + trace au clic | ✅ ~11 000 avions OpenSky, interpolation, fiche (départ, destination probable, ETA), trace |
+| Milliers d'avions réels, fluides, fiche + trace au clic | ✅ ~11 000 avions OpenSky, interpolation, fiche (compagnie, type, départ, destination probable, ETA), trace |
 | Quota OpenSky jamais dépassé sur 24 h | ✅ intervalle calculé, testé, documenté |
 | Positions historisées en Parquet partitionné sur S3 | ✅ (SeaweedFS au lieu de MinIO, voir ADR 0002) ; compaction quotidienne des petits fichiers (un fichier par heure) |
-| `dbt build` passe, marts visibles dans Superset | ✅ 15 modèles et 53 tests dbt (lake de test et données réelles) ; 2 dashboards (16 graphiques) |
-| Dagster orchestre dbt, qualité et ML | ✅ assets dbt + 67 asset checks (53 tests dbt + 14 checks Soda Core) + assets ML + compaction ; 3 schedules |
+| `dbt build` passe, marts visibles dans Superset | ✅ 25 modèles et 77 tests dbt (lake de test et données réelles) ; 3 dashboards (25 graphiques) |
+| Dagster orchestre dbt, qualité et ML | ✅ assets dbt + 91 asset checks (77 tests dbt + 14 checks Soda Core) + assets ML + vent + compaction ; 3 schedules |
 | Alertes squawk et attente en cercle en direct sur la carte | ✅ (+ descente rapide, perte de signal, déroutement, vol atypique) |
 | Modèles suivis dans MLflow avec baseline | ✅ ETA LightGBM vs distance / vitesse, prévision Holt-Winters vs naïf saisonnier, Isolation Forest ; 🟡 vérifié sur le lake de test, sur données réelles ils attendent l'historique minimal |
-| Assistant en français, lecture seule, garde-fous | ✅ boucle d'outils Claude ou Ollama, garde-fous testés, serveur MCP ; 🟡 éval des 20 questions vérifiée côté requêtes de référence (`DRY=1`), l'éval complète demande une clé API |
+| Assistant en français, lecture seule, garde-fous | ✅ boucle d'outils Claude ou Ollama, garde-fous testés, serveur MCP, éval suivie dans MLflow ; 🟡 éval des 22 questions vérifiée côté requêtes de référence (`DRY=1`), l'éval complète demande une clé API |
 | Démo complète sans OpenSky (replay) | ✅ `make replay` (fichier enregistré ou trafic synthétique) |
 | CI verte, README complet | ✅ workflow lint / types / tests / dbt / ML / éval / images / e2e |
 
@@ -191,9 +204,15 @@ vérifié sur la stack lancée avec de vraies données OpenSky, sauf mention con
   l'atterrissage n'a pas d'arrivée.
 - **Quota de l'API** : en anonyme, un snapshot toutes les 16 minutes ; l'interpolation est
   alors une extrapolation qui ignore les virages. Un compte gratuit ramène l'intervalle à 96 s.
-- **Données** : OpenSky Network, **usage non commercial et recherche uniquement**
-  (<https://opensky-network.org/about/terms-of-use>). Les fichiers enregistrés ne sont pas
-  redistribués dans ce dépôt.
+- **Données** : OpenSky Network (positions et base aéronefs), **usage non commercial et
+  recherche uniquement** (<https://opensky-network.org/about/terms-of-use>) ; OpenFlights
+  (compagnies, ODbL) ; Open-Meteo (vent, CC BY 4.0) ; OurAirports (domaine public). Aucun
+  de ces fichiers n'est redistribué dans ce dépôt : `make seed` les télécharge.
+- **Base aéronefs** : l'instantané public d'OpenSky date d'avril 2024 ; les avions livrés
+  depuis n'y figurent pas (environ un avion observé sur quatre n'est pas identifié).
+- **Vent** : grille de 10° au niveau 250 hPa (~FL340), adaptée à la croisière seulement ;
+  sur le lake de test synthétique (vols sans vent) l'ablation ne montre logiquement aucun
+  gain, le gain réel se mesurera avec l'historique.
 - La réécriture horaire d'un mart peut faire échouer une requête qui la chevauche (voir ADR 0003).
 - **Perte de signal** : en mode anonyme (un snapshot toutes les 16 min), un avion disparu a
   très souvent simplement atterri ; rejouée sur des données réelles, la règle produisait plus
@@ -204,11 +223,10 @@ vérifié sur la stack lancée avec de vraies données OpenSky, sauf mention con
 
 ## Feuille de route
 
-1. Reconstitution des vols : clustering DBSCAN des extrémités sans aéroport proche.
-2. Enrichissement avec la base aéronefs OpenSky (type, compagnie) et dashboards
-   supplémentaires (compagnies, ponctualité).
-3. Features météo (vent en altitude) pour l'ETA ; prévision par aéroport.
-4. Éval de l'assistant suivie dans MLflow à chaque changement de prompt ou de modèle.
+1. Ponctualité : nécessite des horaires programmés, absents de l'ADS-B (source à trouver).
+2. Rattacher les vols aux clusters DBSCAN récurrents comme pseudo-aéroports.
+3. Prévision par aéroport (mouvements horaires) en plus de la prévision par zone.
+4. Vent le long de la route restante (et non au seul point courant) pour l'ETA.
 
 ---
 
@@ -222,25 +240,28 @@ credentials, with a polling interval **derived from the daily credit quota**: 96
 - a **FastAPI** service keeps the live state in memory and streams column-oriented deltas over
   WebSocket to a **React + MapLibre + deck.gl** map, which renders 11k+ aircraft with
   spherical dead-reckoning interpolation; the aircraft panel shows the departure airport,
-  the probable destination and an **ETA**;
+  the probable destination and an **ETA**, plus the airline, aircraft type and registration
+  from the OpenSky aircraft database (520k aircraft) and OpenFlights;
 - a streaming **anomaly detector** raises emergency squawk, rapid-descent, holding-pattern
   and signal-loss alerts (the latter calibrated on real data: it waits for two missing
   snapshots and only runs with authenticated polling);
 - an at-least-once **Parquet sink** lands every position in an S3 lake (SeaweedFS, since MinIO
-  no longer ships community images), modelled with **dbt-duckdb** (15 models: incremental
+  no longer ships community images), modelled with **dbt-duckdb** (25 models: incremental
   staging, ADS-B glitch filtering, flight reconstruction, marts and ML features written as
   Parquet to respect DuckDB's single-writer constraint) and orchestrated by **Dagster**
   (dbt tests and **Soda Core** contracts as asset checks, hourly scoring, daily training,
   lake compaction);
 - **ML**, tracked in **MLflow** against explicit baselines: a LightGBM ETA model that learns a
-  correction of the physics baseline (served by the API only if it beats it), Holt-Winters
-  traffic forecasting vs seasonal naive, an explained Isolation Forest and diversion
-  detection, both published as alerts;
-- **Superset** dashboards (traffic, ML models) are versioned as code;
+  correction of the physics baseline (served by the API only if it beats it), with the
+  upper-air tail wind (Open-Meteo, 250 hPa) evaluated by ablation, Holt-Winters traffic
+  forecasting vs seasonal naive, an explained Isolation Forest and diversion detection
+  (both published as alerts), and DBSCAN clustering of take-offs / landings far from any
+  known airport;
+- **Superset** dashboards (traffic, ML models, airlines and fleet) are versioned as code;
 - a French-speaking **assistant** runs a Claude tool loop (or a local Ollama model) over
   guarded text-to-SQL (sqlglot allow-listing, forced LIMIT, timeout, sandboxed read-only
-  DuckDB) and live-state tools, with a 20-question eval set and an **MCP server** for
-  Claude Desktop.
+  DuckDB) and live-state tools, with a 22-question eval set tracked in MLflow and an
+  **MCP server** for Claude Desktop.
 
 Quick start: `cp .env.example .env && make seed && make up` (or `make up-demo`, or `make
 replay` for a fully offline demo). Everything runs without any API key (the assistant is then
