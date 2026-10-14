@@ -13,7 +13,7 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from fastapi import (
@@ -43,9 +43,17 @@ from skyradar_api.ws import Broadcaster
 from skyradar_common.kafka import KafkaSettings
 from skyradar_common.logging import configure_logging
 
+ASSISTANT_TIMEOUT_S = 600
+
+
+class Turn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=2000)
+
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=3, max_length=500)
+    history: list[Turn] = Field(default_factory=list, max_length=24)
 
 
 def create_app(settings: ApiSettings | None = None) -> FastAPI:
@@ -237,13 +245,20 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         assistant_limit.hit(client_ip(http, settings.client_ip_header))
         assistant_budget.hit("all")
         try:
-            async with httpx.AsyncClient(timeout=90) as client:
+            # A local model (Ollama) on a laptop CPU can take minutes for a tool loop.
+            async with httpx.AsyncClient(timeout=ASSISTANT_TIMEOUT_S) as client:
                 response = await client.post(
                     f"{settings.assistant_url.rstrip('/')}/ask", json=request.model_dump()
                 )
         except httpx.ConnectError as exc:
             # The assistant only runs in the "full" profile.
             raise HTTPException(503, "assistant service is not running") from exc
+        except httpx.TimeoutException as exc:
+            raise HTTPException(
+                504,
+                "l'assistant met trop de temps à répondre (modèle local lent ou occupé) :"
+                " réessayez, ou choisissez un modèle plus léger",
+            ) from exc
         except httpx.HTTPError as exc:
             raise HTTPException(502, f"assistant unreachable: {exc}") from exc
         if response.status_code >= 400:

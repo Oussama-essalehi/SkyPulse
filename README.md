@@ -139,7 +139,10 @@ de référence, sans appel au LLM), `make smoke` (tests e2e sur la stack lancée
 **Sans aucune clé**, tout fonctionne : OpenSky passe en mode anonyme (un snapshot toutes les
 16 min, la carte interpole entre deux snapshots) et l'assistant est désactivé proprement
 (réponse 503 explicite). Avec `ANTHROPIC_API_KEY` l'assistant utilise Claude ; avec
-`OLLAMA_BASE_URL` un modèle local.
+`OLLAMA_BASE_URL` un modèle local, gratuit (`ollama pull qwen2.5:7b` d'abord, le nom doit
+correspondre exactement à `OLLAMA_MODEL`, voir `ollama list`). L'assistant s'ouvre dans une
+barre de discussion à droite de la carte, garde le contexte des derniers échanges (« et
+hier ? ») et ne répond qu'aux questions sur le trafic aérien et SkyRadar.
 **Lancez l'ingestion le plus tôt possible** : la reconstitution des vols et les futurs modèles
 de ML s'améliorent avec l'historique accumulé.
 

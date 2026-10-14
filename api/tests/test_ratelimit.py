@@ -1,4 +1,8 @@
+import json
+
+import httpx
 import pytest
+import respx
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
@@ -84,3 +88,30 @@ def test_metrics_endpoint() -> None:
     assert "skyradar_api_kafka_connected 0.0" in body
     assert 'skyradar_api_rate_limited_total{limiter="aircraft"}' in body
     assert 'route="/aircraft/{icao24}",status="429"' in body
+
+
+def test_assistant_proxy_forwards_the_conversation_and_explains_timeouts() -> None:
+    client = app_client(ASSISTANT_URL="http://assistant:8001")
+    history = [
+        {"role": "user", "content": "Combien d'avions en France ?"},
+        {"role": "assistant", "content": "1 200 avions."},
+    ]
+    with respx.mock as mock:
+        route = mock.post("http://assistant:8001/ask").mock(
+            side_effect=[
+                httpx.Response(200, json={"answer": "800 avions."}),
+                httpx.ReadTimeout("slow model"),
+            ]
+        )
+        ok = client.post("/assistant/ask", json={"question": "et en Espagne ?", "history": history})
+        slow = client.post("/assistant/ask", json={"question": "et en Italie ?"})
+    assert ok.json() == {"answer": "800 avions."}
+    assert json.loads(route.calls[0].request.content)["history"] == history
+    assert slow.status_code == 504
+    assert "trop de temps" in slow.json()["detail"]
+    # History entries are validated (role, size).
+    bad = client.post(
+        "/assistant/ask",
+        json={"question": "et ici ?", "history": [{"role": "system", "content": "x"}]},
+    )
+    assert bad.status_code == 422

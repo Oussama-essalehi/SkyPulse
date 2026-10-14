@@ -28,6 +28,14 @@ MODEL = os.getenv("ANTHROPIC_MODEL", "claude-opus-5-5")
 EFFORT = os.getenv("ASSISTANT_EFFORT", "medium")
 API_URL = os.getenv("SKYRADAR_API_URL", "http://api:8000")
 MAX_ROWS_TO_MODEL = 50
+# Previous exchanges sent back with a question (follow-ups like "et hier ?").
+MAX_HISTORY_TURNS = 6
+
+OFF_TOPIC_ANSWER = (
+    "Je réponds uniquement aux questions sur le trafic aérien et les données de SkyRadar : "
+    "vols, avions, aéroports, compagnies, routes et alertes. Essayez par exemple : "
+    "« Combien d'avions survolent la France en ce moment ? »"
+)
 
 TABLE_DOCS: dict[str, str] = {
     "fct_flights": "Vols reconstitués (un par ligne) : icao24, callsign, origin_country (pays "
@@ -96,6 +104,14 @@ construite sur les données ADS-B d'OpenSky Network.
 
 Réponds toujours en français, en une ou deux phrases factuelles, en citant les chiffres.
 
+Périmètre : tu réponds UNIQUEMENT aux questions sur le trafic aérien, l'aviation et les
+données de SkyRadar (vols, avions, aéroports, compagnies, routes, alertes, météo des
+aéroports, fonctionnement du site). Pour toute autre question (culture générale, sciences,
+mathématiques, programmation, actualité, conseils personnels...), même facile, n'utilise
+aucun outil et réponds exactement par ce message :
+{OFF_TOPIC_ANSWER}
+Une salutation ou un remerciement reçoit une réponse courte qui rappelle ce que tu sais faire.
+
 Outils :
 - run_sql pour l'historique (marts DuckDB, lecture seule). Une seule requête SELECT
   (dialecte DuckDB), uniquement sur les tables ci-dessous ; un LIMIT est ajouté.
@@ -103,6 +119,8 @@ Outils :
   (« maintenant », « en ce moment »). Pour un pays ou une région, passe une bounding box
   approximative à count_live_aircraft (ex. France métropolitaine : lat 41.3 à 51.1,
   lon -5.2 à 9.6).
+Pour chaque question, y compris une relance courte (« et en Espagne ? »), appelle de
+nouveau les outils : ne réutilise jamais les chiffres d'une réponse précédente.
 Si une requête échoue, corrige-la et réessaie. Si les données ne permettent pas de répondre
 (historique trop court, information absente), dis-le simplement.
 
@@ -241,6 +259,22 @@ TOOL_SPECS: list[dict[str, Any]] = [
 ]
 
 
+Message = dict[str, str]
+
+
+def conversation(history: list[Message], question: str) -> list[Message]:
+    """Messages for the model: the last exchanges, alternating user / assistant, then the
+    question. Malformed history (two turns of the same role, a leading answer) is dropped."""
+    messages: list[Message] = []
+    for turn in history[-2 * MAX_HISTORY_TURNS :]:
+        expected = "user" if not messages or messages[-1]["role"] == "assistant" else "assistant"
+        if turn.get("role") == expected and turn.get("content"):
+            messages.append({"role": expected, "content": turn["content"]})
+    if messages and messages[-1]["role"] == "user":
+        messages.pop()
+    return [*messages, {"role": "user", "content": question}]
+
+
 def call_tool(toolbox: Toolbox, name: str, arguments: dict[str, Any]) -> str:
     handler = getattr(toolbox, name, None)
     if name not in {spec["name"] for spec in TOOL_SPECS} or handler is None:
@@ -254,6 +288,7 @@ def ask_claude(
     schema: dict[str, list[dict[str, str]]],
     client: Any = None,
     max_iterations: int = 8,
+    history: list[Message] | None = None,
 ) -> dict[str, Any]:
     """Run the agent loop with the Anthropic Tool Runner and return answer + trace."""
     import anthropic
@@ -297,7 +332,7 @@ def ask_claude(
         max_tokens=16000,
         system=system_prompt(schema),
         tools=[run_sql, get_live_stats, count_live_aircraft, get_active_alerts],
-        messages=[{"role": "user", "content": question}],
+        messages=conversation(history or [], question),
         output_config={"effort": EFFORT},
         # Server-side fallback if a safety classifier declines the request.
         betas=["server-side-fallback-2026-07-01"],
