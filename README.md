@@ -7,18 +7,19 @@ et un assistant en langage naturel.**
 Projet portfolio de bout en bout : ingestion temps réel, streaming, data engineering,
 analytics, ML et IA générative.
 
-![Carte SkyRadar en direct : de l'Europe à l'Amérique du Nord, recherche d'un vol et fiche avion](docs/images/map.gif)
-<sub>Enregistrement réel (14/10/2026, 00 h 25 UTC, accéléré 4,5×) : ~5 000 avions suivis la
-nuit européenne, couleur selon l'altitude, recherche d'un vol puis fiche. En journée, la carte
-en suit plus de 11 000 ([capture](docs/images/map.png)).</sub>
+![Carte SkyRadar en direct : l'Europe en journée, zoom, recherche d'un vol et fiche avion](docs/images/map.gif)
+<sub>Enregistrement réel (14/10/2026, 11 h UTC, accéléré 3×) : ~10 000 avions suivis, couleur
+selon l'altitude ; zoom sur l'Europe centrale, recherche de BAW131 puis fiche et trace
+([capture fixe](docs/images/map.png)).</sub>
 
 | Fiche avion : compagnie, type, immatriculation, trace | Mobile |
 |---|---|
-| ![AFR090, Boeing 777-300ER d'Air France en approche de Miami : fiche et trace](docs/images/aircraft-panel.png) | <img src="docs/images/mobile.png" width="220" alt="Version mobile"> |
+| ![BAW131, Boeing 787-8 de British Airways au-dessus de l'Autriche : fiche et trace](docs/images/aircraft-panel.png) | <img src="docs/images/mobile.png" width="220" alt="Version mobile"> |
 
-<sub>Une alerte détectée en direct (descente rapide) : [capture](docs/images/aircraft-alert.png).
-Deux thèmes, **sombre** et **gris** clair (bouton en haut à droite, choix mémorisé, thème
-du système par défaut) : [capture du thème gris](docs/images/map-grey.png).</sub>
+<sub>Une alerte détectée en direct (descente rapide d'un Etihad au-dessus de la mer Noire) :
+[capture](docs/images/aircraft-alert.png). Deux thèmes, **gris** clair (captures ci-dessus) et
+**sombre** (bouton en haut à droite, choix mémorisé, thème du système par défaut) :
+[capture du thème sombre](docs/images/map-dark.png).</sub>
 
 ---
 
