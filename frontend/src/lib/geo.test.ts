@@ -115,6 +115,14 @@ describe("AircraftStore", () => {
     expect(store.matches(a, { ...DEFAULT_FILTERS, status: "ground" })).toBe(true);
   });
 
+  it("draws only the selected aircraft in focus mode", () => {
+    const store = new AircraftStore();
+    store.apply(message("snapshot", 2));
+    expect(store.frame(DEFAULT_FILTERS, null, true).length).toBe(1); // nothing selected
+    expect(store.frame(DEFAULT_FILTERS, "abc123", true).ids).toEqual(["abc123"]);
+    expect(store.frame(DEFAULT_FILTERS, "zzz999", true).length).toBe(0);
+  });
+
   it("keeps only the aircraft of the chosen airport", () => {
     const store = new AircraftStore();
     store.apply(message("snapshot", 2));

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AircraftPanel } from "./components/AircraftPanel";
 import { AirportPanel } from "./components/AirportPanel";
@@ -6,10 +6,11 @@ import { AlertBanner, AlertsPanel } from "./components/AlertsPanel";
 import { AssistantPanel } from "./components/AssistantPanel";
 import { FiltersPanel } from "./components/FiltersPanel";
 import { Legend } from "./components/Legend";
-import { type FlyTarget, MapView } from "./components/MapView";
+import { type FitTarget, type FlyTarget, MapView } from "./components/MapView";
 import { type PanelName, TopBar } from "./components/TopBar";
 import { fromColumns } from "./lib/airports";
 import { api } from "./lib/api";
+import { flightFrame } from "./lib/flight";
 import { DEFAULT_FILTERS } from "./lib/labels";
 import type { AircraftDetail, Airport, AirportBoard, Filters } from "./lib/types";
 import { useLive } from "./lib/useLive";
@@ -26,6 +27,9 @@ export default function App() {
   const [detail, setDetail] = useState<AircraftDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [flyTo, setFlyTo] = useState<FlyTarget | null>(null);
+  const [fitTo, setFitTo] = useState<FitTarget | null>(null);
+  // Aircraft whose whole flight was already framed (once per selection, not every refresh).
+  const framed = useRef<string | null>(null);
   const [airports, setAirports] = useState<Airport[]>([]);
   const [airport, setAirport] = useState<string | null>(null);
   // Airport board left for one of its aircraft: the aircraft card links back to it.
@@ -107,9 +111,14 @@ export default function App() {
       api
         .aircraft(selected)
         .then((d) => {
-          if (!cancelled) {
-            setDetail(d);
-            setDetailError(null);
+          if (cancelled) return;
+          setDetail(d);
+          setDetailError(null);
+          // First load of this aircraft: frame its whole flight.
+          if (framed.current !== d.state.icao24) {
+            framed.current = d.state.icao24;
+            const bounds = flightFrame(d);
+            if (bounds) setFitTo({ bounds, seq: Date.now() });
           }
         })
         .catch((e: Error) => !cancelled && setDetailError(e.message));
@@ -125,6 +134,7 @@ export default function App() {
   /** Select an aircraft (null: clear every selection, e.g. a click on the empty map). */
   const select = useCallback((icao24: string | null) => {
     setSelected(icao24);
+    framed.current = null;
     setAirport(null);
     setBackTo(null);
   }, []);
@@ -187,6 +197,7 @@ export default function App() {
         trail={current?.trail ?? null}
         flight={current?.flight ?? null}
         flyTo={flyTo}
+        fitTo={fitTo}
       />
       <TopBar
         store={store}
