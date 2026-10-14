@@ -52,7 +52,12 @@ interface Props {
   airports: Airport[];
   selectedAirport: string | null;
   onSelectAirport: (icao: string) => void;
+  /** The assistant sidebar covers the right of the map (desktop). */
+  chatOpen?: boolean;
 }
+
+/** Width of the assistant sidebar (--chat-w in styles.css). */
+const CHAT_WIDTH = 380;
 
 const AIRPORT_RADIUS: Record<Airport["kind"], number> = { L: 5, M: 3.5, S: 2.5 };
 
@@ -420,19 +425,22 @@ export function MapView(props: Props) {
     };
   }, []);
 
-  const { fitTo } = props;
+  const { fitTo, chatOpen } = props;
   useEffect(() => {
     const map = mapRef.current;
     if (!fitTo || !map) return;
-    // Room for the aircraft card: on the right on a desktop, at the bottom on a phone.
+    // Room for the aircraft card: on the right on a desktop (plus the assistant sidebar
+    // when it is open), at the bottom on a phone.
     const phone = window.innerWidth <= 760;
     map.fitBounds(fitTo.bounds, {
       padding: phone
         ? { top: 120, bottom: Math.round(window.innerHeight * 0.55) + 20, left: 30, right: 30 }
-        : { top: 90, bottom: 70, left: 70, right: 440 },
+        : { top: 90, bottom: 70, left: 70, right: 440 + (chatOpen ? CHAT_WIDTH : 0) },
       maxZoom: 8,
       duration: 1200,
     });
+    // Framing follows a new target only, not the sidebar opening or closing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitTo]);
 
   const { flyTo } = props;

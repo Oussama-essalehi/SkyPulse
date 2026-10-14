@@ -1,3 +1,4 @@
+import type { Turn } from "./chat";
 import type {
   AircraftDetail,
   AirportBoard,
@@ -43,10 +44,10 @@ export const api = {
   airportBoard: (icao: string, limit = 40) =>
     getJson<AirportBoard>(`/airports/${icao}/board?limit=${limit}`),
   airportWeather: (icao: string) => getJson<WeatherResponse>(`/airports/${icao}/weather`),
-  ask: (question: string) =>
+  ask: (question: string, history: Turn[] = []) =>
     getJson<AssistantAnswer>("/assistant/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, history }),
     }),
 };

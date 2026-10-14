@@ -5,7 +5,7 @@ import type { AircraftStore } from "../lib/store";
 import type { Airport } from "../lib/types";
 import type { ConnectionStatus } from "../lib/useLive";
 
-export type PanelName = "alerts" | "filters" | "assistant" | null;
+export type PanelName = "alerts" | "filters" | null;
 
 interface Props {
   store: AircraftStore;
@@ -15,6 +15,8 @@ interface Props {
   criticalCount: number;
   panel: PanelName;
   onPanel: (panel: PanelName) => void;
+  chatOpen: boolean;
+  onChat: (open: boolean) => void;
   onPick: (icao24: string) => void;
   airports: Airport[];
   onPickAirport: (icao: string) => void;
@@ -38,7 +40,7 @@ const SOURCE_LABEL: Record<string, string> = {
 
 export function TopBar(props: Props) {
   const { store, status, visible, alertCount, criticalCount, panel, onPanel, onPick } = props;
-  const { airports, onPickAirport } = props;
+  const { airports, onPickAirport, chatOpen, onChat } = props;
   const [query, setQuery] = useState("");
   const hits = store.search(query, 6);
   const airportHits = searchAirports(airports, query);
@@ -128,8 +130,9 @@ export function TopBar(props: Props) {
           )}
         </button>
         <button
-          className={panel === "assistant" ? "active" : ""}
-          onClick={() => toggle("assistant")}
+          className={`assistant-toggle ${chatOpen ? "active" : ""}`}
+          aria-pressed={chatOpen}
+          onClick={() => onChat(!chatOpen)}
         >
           Assistant
         </button>

@@ -1,3 +1,4 @@
+import itertools
 import json
 from pathlib import Path
 from typing import Any
@@ -9,7 +10,14 @@ import pytest
 from anthropic import DefaultHttpxClient
 
 from skyradar_assistant import main
-from skyradar_assistant.agent import Toolbox, ask_claude, system_prompt
+from skyradar_assistant.agent import (
+    MAX_HISTORY_TURNS,
+    OFF_TOPIC_ANSWER,
+    Toolbox,
+    ask_claude,
+    conversation,
+    system_prompt,
+)
 
 
 def message(content: list[dict[str, Any]], stop_reason: str) -> dict[str, Any]:
@@ -65,6 +73,10 @@ def test_tool_runner_loop_with_guarded_sql(marts: Path) -> None:
         Toolbox(main.run_safe_query),
         main.schema(),
         client=client,
+        history=[
+            {"role": "user", "content": "Combien de vols aujourd'hui ?"},
+            {"role": "assistant", "content": "1 234 vols."},
+        ],
     )
 
     assert result["answer"].startswith("L'aéroport le plus actif est LFPG")
@@ -75,6 +87,9 @@ def test_tool_runner_loop_with_guarded_sql(marts: Path) -> None:
     assert first["model"] == "claude-opus-5-5"
     assert first["fallbacks"] == "default"
     assert first["output_config"] == {"effort": "medium"}
+    # The previous exchange is sent before the question (follow-up questions).
+    assert [m["role"] for m in first["messages"]] == ["user", "assistant", "user"]
+    assert first["messages"][1]["content"] == "1 234 vols."
     assert {t["name"] for t in first["tools"]} == {
         "run_sql",
         "get_live_stats",
@@ -111,6 +126,37 @@ def test_system_prompt_lists_schema(marts: Path) -> None:
     assert "fct_airport_activity" in prompt
     assert "movements" in prompt
     assert "français" in prompt
+    # Off-topic questions get a fixed answer instead of a general-knowledge reply.
+    assert "UNIQUEMENT" in prompt
+    assert OFF_TOPIC_ANSWER in prompt
+
+
+def test_conversation_keeps_the_last_alternating_exchanges() -> None:
+    history = []
+    for i in range(MAX_HISTORY_TURNS + 2):
+        history += [
+            {"role": "user", "content": f"q{i}"},
+            {"role": "assistant", "content": f"r{i}"},
+        ]
+    messages = conversation(history, "et hier ?")
+    assert len(messages) == 2 * MAX_HISTORY_TURNS + 1
+    assert messages[0] == {"role": "user", "content": "q2"}
+    assert messages[-1] == {"role": "user", "content": "et hier ?"}
+    roles = [m["role"] for m in messages]
+    assert all(a != b for a, b in itertools.pairwise(roles))
+    # Malformed history: leading answer, unanswered question, two answers in a row.
+    messy = [
+        {"role": "assistant", "content": "bonjour"},
+        {"role": "user", "content": "q1"},
+        {"role": "assistant", "content": "r1"},
+        {"role": "assistant", "content": "r1 bis"},
+        {"role": "user", "content": "q2 sans réponse"},
+    ]
+    assert conversation(messy, "q3") == [
+        {"role": "user", "content": "q1"},
+        {"role": "assistant", "content": "r1"},
+        {"role": "user", "content": "q3"},
+    ]
 
 
 def test_ollama_loop(marts: Path) -> None:
@@ -120,6 +166,12 @@ def test_ollama_loop(marts: Path) -> None:
     from skyradar_assistant.ollama import ask_ollama
 
     calls = [
+        {
+            "message": {
+                "role": "assistant",
+                "content": '{"question": "Quels aéroports après Bonjour ?", "on_topic": true}',
+            }
+        },
         {
             "message": {
                 "role": "assistant",
@@ -145,8 +197,100 @@ def test_ollama_loop(marts: Path) -> None:
             Toolbox(main.run_safe_query),
             main.schema(),
             base_url="http://ollama:11434",
+            history=[
+                {"role": "user", "content": "Bonjour"},
+                {"role": "assistant", "content": "Bonjour !"},
+            ],
         )
-    assert route.call_count == 2
+    assert route.call_count == 3
     assert result["provider"] == "ollama"
     assert result["answer"] == "Deux aéroports : LFPG et EGLL."
     assert sorted(r[0] for r in result["rows"]) == ["EGLL", "LFPG"]
+    gate = json.loads(route.calls[0].request.content)
+    assert gate["format"]["required"] == ["question", "on_topic"]
+    assert "Question précédente : « Bonjour »" in gate["messages"][1]["content"]
+    # The tool loop answers the standalone rewrite, without the conversation.
+    loop = json.loads(route.calls[1].request.content)
+    assert [m["role"] for m in loop["messages"]] == ["system", "user"]
+    assert loop["messages"][1]["content"] == "Quels aéroports après Bonjour ?"
+    assert loop["keep_alive"] == "30m"
+    assert result["question"] == "Quels aéroports après Bonjour ?"
+
+
+def test_ollama_unreadable_triage_keeps_the_conversation(marts: Path) -> None:
+    import httpx
+    import respx
+
+    from skyradar_assistant.ollama import ask_ollama
+
+    replies = [
+        {"message": {"role": "assistant", "content": "pas du JSON"}},
+        {"message": {"role": "assistant", "content": "Réponse."}},
+    ]
+    with respx.mock:
+        route = respx.post("http://ollama:11434/api/chat").mock(
+            side_effect=[httpx.Response(200, json=r) for r in replies]
+        )
+        result = ask_ollama(
+            "et hier ?",
+            Toolbox(main.run_safe_query),
+            main.schema(),
+            base_url="http://ollama:11434",
+            history=[
+                {"role": "user", "content": "Combien de vols ?"},
+                {"role": "assistant", "content": "12 vols."},
+            ],
+        )
+    assert result["answer"] == "Réponse."
+    loop = json.loads(route.calls[1].request.content)
+    assert [m["role"] for m in loop["messages"]] == ["system", "user", "assistant", "user"]
+
+
+def test_ollama_declines_off_topic_questions_without_tools(marts: Path) -> None:
+    import httpx
+    import respx
+
+    from skyradar_assistant.ollama import ask_ollama
+
+    with respx.mock:
+        route = respx.post("http://ollama:11434/api/chat").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "message": {
+                        "role": "assistant",
+                        "content": '{"question": "Quelle est l\'équation de la gravité ?",'
+                        ' "on_topic": false}',
+                    }
+                },
+            )
+        )
+        result = ask_ollama(
+            "c'est quoi l'équation de gravité",
+            Toolbox(main.run_safe_query),
+            main.schema(),
+            base_url="http://ollama:11434",
+        )
+    assert route.call_count == 1
+    assert result["answer"] == OFF_TOPIC_ANSWER
+    assert result["off_topic"] is True
+    assert result["tools_used"] == []
+
+
+def test_ollama_missing_model_gives_the_fix(marts: Path) -> None:
+    import httpx
+    import respx
+
+    from skyradar_assistant.ollama import OllamaError, ask_ollama
+
+    with respx.mock:
+        respx.post("http://ollama:11434/api/chat").mock(
+            return_value=httpx.Response(404, json={"error": "model 'qwen2.5:7b' not found"})
+        )
+        with pytest.raises(OllamaError, match="ollama pull"):
+            ask_ollama(
+                "Quels aéroports ?",
+                Toolbox(main.run_safe_query),
+                main.schema(),
+                base_url="http://ollama:11434",
+            )

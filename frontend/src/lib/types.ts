@@ -269,4 +269,8 @@ export interface AssistantAnswer {
   columns: string[];
   rows: unknown[][];
   tools_used?: string[];
+  model?: string;
+  provider?: "anthropic" | "ollama";
+  /** The question was outside SkyRadar's subject: fixed answer, no tool used. */
+  off_topic?: boolean;
 }

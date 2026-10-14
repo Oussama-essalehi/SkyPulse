@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import duckdb
 import structlog
@@ -88,8 +88,15 @@ def run_safe_query(sql: str, max_rows: int = 200) -> tuple[str, list[str], list[
     return safe_sql, columns, rows
 
 
+class Turn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=2000)
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=3, max_length=500)
+    # Previous exchanges of the conversation (the model keeps the last few).
+    history: list[Turn] = Field(default_factory=list, max_length=24)
 
 
 app = FastAPI(title="SkyRadar assistant", version="0.1.0")
@@ -122,10 +129,11 @@ def ask(request: AskRequest) -> dict[str, Any]:
     if provider is None:
         raise HTTPException(503, "assistant disabled: set ANTHROPIC_API_KEY or OLLAMA_BASE_URL")
     toolbox = Toolbox(run_safe_query)
+    history = [t.model_dump() for t in request.history]
     try:
         if provider == "anthropic":
-            return ask_claude(request.question, toolbox, schema())
-        return ask_ollama(request.question, toolbox, schema())
+            return ask_claude(request.question, toolbox, schema(), history=history)
+        return ask_ollama(request.question, toolbox, schema(), history=history)
     except Exception as exc:
         log.warning("assistant_failed", provider=provider, error=str(exc))
         raise HTTPException(502, f"assistant error ({provider}): {exc}") from exc
