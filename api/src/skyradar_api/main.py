@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from skyradar_api.config import ApiSettings
 from skyradar_api.consumer import LiveConsumer
 from skyradar_api.enrichment import Enrichment
+from skyradar_api.routes import RouteLookup
 from skyradar_api.state import LiveState
 from skyradar_api.ws import Broadcaster
 from skyradar_common.kafka import KafkaSettings
@@ -43,6 +44,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     )
     broadcaster = Broadcaster(state, interval=settings.ws_push_interval_seconds)
     enrichment = Enrichment(root=Path(settings.marts_root))
+    routes = RouteLookup()
     consumer = LiveConsumer(
         state,
         KafkaSettings(),
@@ -62,6 +64,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         for task in tasks:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
+        await routes.aclose()
 
     app = FastAPI(
         title="SkyRadar API",
@@ -117,8 +120,22 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
             raise HTTPException(404, f"aircraft {icao24} is not currently tracked")
         # Analytics layer (optional): probable route from the marts, ETA model.
         entry = state.aircraft[icao24.lower()]
-        detail["aircraft"] = await asyncio.to_thread(enrichment.aircraft, entry.state)
-        flight = enrichment.flight(entry.state)
+        info, published = await asyncio.gather(
+            asyncio.to_thread(enrichment.aircraft, entry.state),
+            routes.route(entry.state.callsign),
+        )
+        if info is None or not info.get("in_registry"):
+            # Not in the OpenSky database (2024 snapshot): ask adsbdb.
+            extra = await routes.aircraft(entry.state.icao24)
+            if extra is not None:
+                known = {k: v for k, v in (info or {}).items() if v is not None}
+                info = {"airline_icao": None, "airline_name": None, **extra, **known}
+                info["in_registry"] = False
+                info["source"] = "adsbdb"
+        if info is not None and not info.get("airline_name") and published is not None:
+            info["airline_name"] = published.airline
+        detail["aircraft"] = info
+        flight = enrichment.flight(entry.state, published)
         detail["flight"] = flight
         detail["eta"] = enrichment.eta(entry.state, flight)
         return detail

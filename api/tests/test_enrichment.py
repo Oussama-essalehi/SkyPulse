@@ -75,9 +75,14 @@ def test_route_and_naive_eta(tmp_path: Path) -> None:
     enrichment = Enrichment(root=tmp_path)
     flight = enrichment.flight(state())
     assert flight is not None
-    assert flight["departure"] == "LFPG"
-    assert flight["arrival"] == "LFLL"
-    assert flight["arrival_name"] == "Lyon"
+    assert flight["departure"]["icao"] == "LFPG"
+    assert flight["departure_source"] == "reconstructed"
+    assert flight["arrival"]["icao"] == "LFLL"
+    assert flight["arrival"]["name"] == "Lyon"
+    assert flight["arrival_source"] == "history"
+    assert not flight["departure_time_estimated"]
+    assert 1150 <= flight["elapsed_s"] <= 1250  # took off 20 min ago
+    assert 0 < flight["progress"] < 1
     eta = enrichment.eta(state(), flight)
     assert eta is not None
     assert eta["method"] == "naive"
@@ -121,7 +126,8 @@ def test_no_marts_no_enrichment(tmp_path: Path) -> None:
     assert enrichment.flight(state()) is None
     assert enrichment.eta(state(), None) is None
     marts(tmp_path)
-    assert Enrichment(root=tmp_path).eta(state(on_ground=True), {"arrival": "LFLL"}) is None
+    on_ground = {"arrival": {"icao": "LFLL", "latitude": 45.7, "longitude": 5.1}}
+    assert Enrichment(root=tmp_path).eta(state(on_ground=True), on_ground) is None
 
 
 def registry(root: Path) -> None:
@@ -216,3 +222,59 @@ def test_tailwind_from_the_wind_mart(tmp_path: Path) -> None:
     assert enrichment._tailwind(west, now) == pytest.approx(-40.0)
     assert np.isnan(enrichment._tailwind(state(latitude=10.0, longitude=100.0), now))
     assert tailwind_ms(10, 0, 90) == pytest.approx(0, abs=1e-9)  # pure crosswind
+
+
+def published(origin: tuple[str, float, float], destination: tuple[str, float, float]):  # type: ignore[no-untyped-def]
+    from skyradar_api.routes import FlightRoute, RouteAirport
+
+    def airport(code: str, lat: float, lon: float) -> RouteAirport:
+        return RouteAirport(code, code[1:], f"{code} airport", "City", "Country", lat, lon)
+
+    return FlightRoute("SKR100", airport(*origin), airport(*destination), "SkyRadar Air")
+
+
+def test_published_route_gives_destination_and_estimated_departure(tmp_path: Path) -> None:
+    """No history at all (first hours, demo profile): the route database is enough."""
+    enrichment = Enrichment(root=tmp_path / "missing")
+    route = published(("LFPG", 49.0097, 2.5479), ("LIRF", 41.8003, 12.2389))
+    # Over Burgundy, heading south-east towards Rome, cruising at 220 m/s.
+    flight = enrichment.flight(state(latitude=47.0, longitude=4.0, true_track=140.0), route)
+    assert flight is not None
+    assert (flight["departure"]["icao"], flight["arrival"]["icao"]) == ("LFPG", "LIRF")
+    assert flight["departure_source"] == flight["arrival_source"] == "route_db"
+    assert flight["departure"]["city"] == "City"
+    assert flight["departure_time_estimated"]
+    # ~260 km flown at 0.8 x 220 m/s: departed ~25 min ago.
+    assert 20 * 60 < flight["elapsed_s"] < 30 * 60
+    assert flight["route_km"] > flight["remaining_km"] > 0
+    eta = enrichment.eta(state(latitude=47.0, longitude=4.0), flight)
+    assert eta is not None
+    assert eta["airport"] == "LIRF"
+
+
+def test_inconsistent_published_route_is_rejected(tmp_path: Path) -> None:
+    marts(tmp_path)
+    enrichment = Enrichment(root=tmp_path)
+    # Wrong direction: the aircraft flies away from the published destination.
+    route = published(("LFPG", 49.0097, 2.5479), ("LIRF", 41.8003, 12.2389))
+    flight = enrichment.flight(state(true_track=320.0), route)
+    assert flight is not None
+    assert flight["rejected_route"] == "LFPG → LIRF"
+    assert flight["arrival"]["icao"] == "LFLL"  # back to our own history
+    # Published origin differs from the observed take-off: rejected as well.
+    route = published(("EGLL", 51.47, -0.4619), ("LIRF", 41.8003, 12.2389))
+    flight = enrichment.flight(state(true_track=140.0), route)
+    assert flight is not None
+    assert flight["rejected_route"] == "EGLL → LIRF"
+    assert flight["departure"]["icao"] == "LFPG"
+
+
+def test_rejected_route_without_history_is_still_reported(tmp_path: Path) -> None:
+    enrichment = Enrichment(root=tmp_path / "missing")
+    route = published(("LFPG", 49.0097, 2.5479), ("LIRF", 41.8003, 12.2389))
+    flight = enrichment.flight(state(latitude=-15.0, longitude=-47.0), route)  # over Brazil
+    assert flight is not None
+    assert flight["departure"] is None
+    assert flight["arrival"] is None
+    assert flight["rejected_route"] == "LFPG → LIRF"
+    assert enrichment.eta(state(), flight) is None

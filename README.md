@@ -12,9 +12,9 @@ analytics, ML et IA générative.
 selon l'altitude ; zoom sur l'Europe centrale, recherche de BAW131 puis fiche et trace
 ([capture fixe](docs/images/map.png)).</sub>
 
-| Fiche avion : compagnie, type, immatriculation, trace | Mobile |
+| Fiche avion : compagnie, type, départ → destination, heures, progression | Mobile |
 |---|---|
-| ![BAW131, Boeing 787-8 de British Airways au-dessus de l'Autriche : fiche et trace](docs/images/aircraft-panel.png) | <img src="docs/images/mobile.png" width="220" alt="Version mobile"> |
+| ![UAE214, Boeing 777 d'Emirates Miami → Dubaï au-dessus de la Normandie : départ, arrivée estimée, temps de vol, progression](docs/images/aircraft-panel.png) | <img src="docs/images/mobile.png" width="220" alt="Version mobile"> |
 
 <sub>Une alerte détectée en direct (descente rapide d'un Etihad au-dessus de la mer Noire) :
 [capture](docs/images/aircraft-alert.png). Deux thèmes, **gris** clair (captures ci-dessus) et
@@ -41,7 +41,7 @@ selon l'altitude ; zoom sur l'Europe centrale, recherche de BAW131 puis fiche et
 | **Lakehouse & analytics engineering** | Parquet partitionné `date=/hour=` sur stockage S3, **dbt-duckdb** (staging incrémental → intermediate → marts), tests dbt, marts en Parquet pour respecter la contrainte mono-écrivain de DuckDB |
 | **Orchestration & qualité** | **Dagster** : lake déclaré en *external assets*, tests dbt et **contrats Soda Core** (fraîcheur, volume, téléportation) exposés en *asset checks*, schedules horaire / quotidien / maintenance, compaction des petits fichiers Parquet |
 | **Reconstitution de vols** | Segmentation des trajectoires et rattachement des extrémités à l'aéroport le plus proche (OurAirports), en SQL, car l'ADS-B ne transporte ni origine ni destination ; **DBSCAN** des décollages / atterrissages hors référentiel (terrains, héliports) |
-| **Enrichissement** | **Base aéronefs OpenSky** (520 000 avions : immatriculation, type, opérateur), types OACI (Doc 8643 : catégorie de sillage), compagnies OpenFlights, **vent en altitude** Open-Meteo (250 hPa) |
+| **Enrichissement** | **Base aéronefs OpenSky** (520 000 avions : immatriculation, type, opérateur), types OACI (Doc 8643 : catégorie de sillage), compagnies OpenFlights, routes publiées des callsigns (**adsbdb**, contrôlées contre la position), **vent en altitude** Open-Meteo (250 hPa) |
 | **Détection d'anomalies** | En streaming : squawk 7500/7600/7700, descente rapide, **attente / tourne en rond**, **perte de signal en zone couverte** (position extrapolée + couverture des récepteurs). En batch : **déroutements** (destination habituelle du callsign) et vols atypiques (**Isolation Forest** expliqué) |
 | **Produit & front** | React + MapLibre + **deck.gl** sur buffers binaires, **interpolation sphérique** des positions, WebSocket au format colonne, responsive, thèmes sombre et gris (palette d'altitude contrôlée à 3:1 de contraste minimum sur chaque fond de carte) |
 | **BI** | **Superset** sur DuckDB : dashboards *Trafic aérien*, *Modèles ML* et *Compagnies et flotte* versionnés « as code » et importés au démarrage |
@@ -135,7 +135,7 @@ box (`OPENSKY_BBOX`) réduit le coût par appel et donc l'intervalle. Voir
 |---|---|---|
 | `libs/common` | Modèles de messages pydantic, Kafka, logging structlog, S3, schémas Arrow | Une seule source de vérité pour les contrats ([ADR 0004](docs/adr/0004-event-contracts.md)) |
 | `ingestion/` | `FlightDataSource` (adapter) : `OpenSkySource`, `ReplaySource`, générateur synthétique ; producteur Redpanda ; `/metrics` Prometheus | httpx async ; token OAuth2 mis en cache et renouvelé ; cadence fixe ; replay rebasé sur l'heure courante |
-| `api/` | FastAPI : état mémoire, traces, `WS /ws/live`, `/aircraft/{icao24}` (compagnie, type et immatriculation, départ, destination probable, **ETA**), `/live/region`, `/alerts`, `/stats/live`, proxy `/assistant/ask` | Pas de *consumer group* (vue diffusée à chaque réplique) ; relecture de 20 min au démarrage ; deltas en colonnes, envoyés au plus une fois par seconde ; marts et modèle ETA rechargés à chaud ; recherche dans la base aéronefs par requête ponctuelle DuckDB mise en cache (~15 ms) |
+| `api/` | FastAPI : état mémoire, traces, `WS /ws/live`, `/aircraft/{icao24}` (compagnie, type et immatriculation, **départ → destination**, heures de départ et d'arrivée estimée, temps de vol, progression, **ETA**), `/live/region`, `/alerts`, `/stats/live`, proxy `/assistant/ask` | Pas de *consumer group* (vue diffusée à chaque réplique) ; relecture de 20 min au démarrage ; deltas en colonnes, envoyés au plus une fois par seconde ; marts et modèle ETA rechargés à chaud ; recherche dans la base aéronefs par requête ponctuelle DuckDB mise en cache (~15 ms) ; route publiée du callsign (adsbdb, en cache) acceptée seulement si elle est cohérente avec la position et le cap, sinon historique de SkyRadar |
 | `frontend/` | React, MapLibre (tuiles OpenFreeMap, sans clé), deck.gl | Store hors React, `IconLayer` sur `Float32Array`, *dead reckoning* + fondu de correction ; nginx sert le build et proxifie `/api` (aucun secret côté navigateur) |
 | `streaming/` | `parquet_sink` et `anomaly` | At-least-once + noms de fichiers déterministes ([ADR 0005](docs/adr/0005-sink-delivery-semantics.md)) ; règles pures et testées unitairement ; la perte de signal attend deux snapshots manquants et ne s'active qu'avec un polling authentifié (calibrée sur données réelles) |
 | `pipeline/dbt` | staging → intermediate → marts, features ML | 25 modèles et 77 tests, marts en Parquet externes, dbt seul écrivain ([ADR 0003](docs/adr/0003-duckdb-single-writer.md)) ; aucun package dbt externe (tests génériques maison), donc build hors ligne ; filtrage des positions aberrantes (« téléportations » ADS-B) avant la segmentation des vols ; référentiels optionnels (relation typée vide si un fichier manque) |
@@ -209,8 +209,14 @@ vérifié sur la stack lancée avec de vraies données OpenSky, sauf mention con
   alors une extrapolation qui ignore les virages. Un compte gratuit ramène l'intervalle à 96 s.
 - **Données** : OpenSky Network (positions et base aéronefs), **usage non commercial et
   recherche uniquement** (<https://opensky-network.org/about/terms-of-use>) ; OpenFlights
-  (compagnies, ODbL) ; Open-Meteo (vent, CC BY 4.0) ; OurAirports (domaine public). Aucun
-  de ces fichiers n'est redistribué dans ce dépôt : `make seed` les télécharge.
+  (compagnies, ODbL) ; Open-Meteo (vent, CC BY 4.0) ; OurAirports (domaine public) ; adsbdb
+  (routes et avions, interrogé à la demande par l'API, `ROUTE_LOOKUP=off` pour le couper).
+  Aucun de ces fichiers n'est redistribué dans ce dépôt : `make seed` les télécharge.
+- **Routes publiées** : elles viennent d'une base communautaire (adsbdb) et un callsign peut
+  être réutilisé ; elles ne sont affichées que si la position et le cap de l'avion sont
+  cohérents avec elles (sur 80 vols de ligne en direct : 85 % ont une route cohérente, les
+  autres n'en ont pas). Sans décollage observé, l'heure de départ est **estimée** d'après la
+  distance parcourue et signalée comme telle.
 - **Base aéronefs** : l'instantané public d'OpenSky date d'avril 2024 ; les avions livrés
   depuis n'y figurent pas (environ un avion observé sur quatre n'est pas identifié).
 - **Vent** : grille de 10° au niveau 250 hPa (~FL340), adaptée à la croisière seulement ;
@@ -243,8 +249,9 @@ credentials, with a polling interval **derived from the daily credit quota**: 96
 - a **FastAPI** service keeps the live state in memory and streams column-oriented deltas over
   WebSocket to a **React + MapLibre + deck.gl** map, which renders 11k+ aircraft with
   spherical dead-reckoning interpolation (dark and light grey themes); the aircraft panel
-  shows the departure airport,
-  the probable destination and an **ETA**, plus the airline, aircraft type and registration
+  shows origin and destination (published route from adsbdb, checked against the live
+  position and track, else SkyRadar's own history), departure and estimated arrival times,
+  flight progress and an **ETA**, plus the airline, aircraft type and registration
   from the OpenSky aircraft database (520k aircraft) and OpenFlights;
 - a streaming **anomaly detector** raises emergency squawk, rapid-descent, holding-pattern
   and signal-loss alerts (the latter calibrated on real data: it waits for two missing
