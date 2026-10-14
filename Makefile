@@ -57,7 +57,7 @@ urls:
 
 # ------------------------------------------------------------------- data
 .PHONY: seed synthetic test-lake
-seed: ## Download reference data (OurAirports) into data/reference
+seed: ## Download reference data (airports, OpenSky aircraft DB, airlines) into data/reference
 	@python3 scripts/seed_reference_data.py
 
 synthetic: ## Generate a synthetic replay file (offline demo)

@@ -433,6 +433,12 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+.aircraft-info {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .facts {
   display: grid;
   grid-template-columns: 1fr 1fr;

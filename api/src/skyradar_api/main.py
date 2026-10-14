@@ -117,6 +117,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
             raise HTTPException(404, f"aircraft {icao24} is not currently tracked")
         # Analytics layer (optional): probable route from the marts, ETA model.
         entry = state.aircraft[icao24.lower()]
+        detail["aircraft"] = await asyncio.to_thread(enrichment.aircraft, entry.state)
         flight = enrichment.flight(entry.state)
         detail["flight"] = flight
         detail["eta"] = enrichment.eta(entry.state, flight)

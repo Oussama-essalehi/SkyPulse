@@ -39,6 +39,8 @@ DATASETS: dict[str, str | None] = {
     "ml_model_metrics": "trained_at",
     "ml_traffic_forecast": "hour",
     "ml_flight_anomaly_scores": "last_seen_ts",
+    "dim_aircraft": "last_seen_ts",
+    "fct_airline_activity": "hour",
 }
 
 
@@ -354,6 +356,157 @@ ML_CHARTS: list[tuple[str, str, str, dict[str, Any], int, int]] = [
 ]
 
 
+AIRCRAFT = metric("COUNT(*)", "Avions")
+
+FLEET_CHARTS: list[tuple[str, str, str, dict[str, Any], int, int]] = [
+    (
+        "airlines_count",
+        "fct_airline_activity",
+        "Compagnies observées",
+        {
+            "viz_type": "big_number_total",
+            "metric": metric("COUNT(DISTINCT airline_icao)", "Compagnies"),
+            "subheader": "préfixe OACI du callsign (AFR1234 -> Air France)",
+            "y_axis_format": ",d",
+        },
+        4,
+        30,
+    ),
+    (
+        "registry_coverage",
+        "dim_aircraft",
+        "Avions identifiés dans la base OpenSky",
+        {
+            "viz_type": "big_number_total",
+            "metric": metric("AVG(CASE WHEN in_registry THEN 1.0 ELSE 0 END)", "Identifiés"),
+            "subheader": "immatriculation, type et opérateur connus",
+            "y_axis_format": ".1%",
+        },
+        4,
+        30,
+    ),
+    (
+        "heavies",
+        "dim_aircraft",
+        "Gros porteurs observés",
+        {
+            "viz_type": "big_number_total",
+            "metric": AIRCRAFT,
+            "adhoc_filters": where("wake_category in ('H', 'J')"),
+            "subheader": "catégorie de turbulence de sillage H ou J (A350, B777, A380…)",
+            "y_axis_format": ",d",
+        },
+        4,
+        30,
+    ),
+    (
+        "airline_activity",
+        "fct_airline_activity",
+        "Avions en vol par compagnie, heure par heure (8 premières)",
+        {
+            "viz_type": "echarts_timeseries_line",
+            "x_axis": "hour",
+            "time_grain_sqla": "PT1H",
+            "metrics": [AIRBORNE],
+            "groupby": ["airline_name"],
+            "limit": 8,
+            "timeseries_limit_metric": AIRBORNE,
+            "order_desc": True,
+            "row_limit": 50_000,
+            "rich_tooltip": True,
+            "show_legend": True,
+            "y_axis_format": ",d",
+            "time_range": "No filter",
+        },
+        12,
+        50,
+    ),
+    (
+        "airline_flights",
+        "fct_flights",
+        "Vols reconstitués par compagnie",
+        {
+            "viz_type": "echarts_timeseries_bar",
+            "x_axis": "airline_name",
+            "metrics": [FLIGHTS],
+            "groupby": [],
+            "adhoc_filters": where("airline_name is not null"),
+            "orientation": "horizontal",
+            "row_limit": 15,
+            "x_axis_sort": "Vols reconstitués",
+            "x_axis_sort_asc": False,
+            "y_axis_format": ",d",
+            "show_legend": False,
+            "time_range": "No filter",
+        },
+        6,
+        55,
+    ),
+    (
+        "types",
+        "dim_aircraft",
+        "Types d'avions les plus observés",
+        {
+            "viz_type": "echarts_timeseries_bar",
+            "x_axis": "typecode",
+            "metrics": [AIRCRAFT],
+            "groupby": [],
+            "adhoc_filters": where("typecode is not null"),
+            "orientation": "horizontal",
+            "row_limit": 15,
+            "x_axis_sort": "Avions",
+            "x_axis_sort_asc": False,
+            "y_axis_format": ",d",
+            "show_legend": False,
+            "time_range": "No filter",
+        },
+        6,
+        55,
+    ),
+    (
+        "wake",
+        "dim_aircraft",
+        "Catégories de turbulence de sillage",
+        {
+            "viz_type": "pie",
+            "groupby": ["wake_category"],
+            "metric": AIRCRAFT,
+            "adhoc_filters": where("wake_category is not null"),
+            "donut": True,
+            "show_labels": True,
+            "label_type": "key_percent",
+            "show_legend": True,
+            "legendOrientation": "right",
+            "time_range": "No filter",
+        },
+        4,
+        50,
+    ),
+    (
+        "fleets",
+        "dim_aircraft",
+        "Flotte observée par compagnie",
+        {
+            "viz_type": "table",
+            "query_mode": "aggregate",
+            "groupby": ["airline_name"],
+            "metrics": [
+                AIRCRAFT,
+                metric("COUNT(DISTINCT typecode)", "Types"),
+                metric("ROUND(AVG(year(current_date) - built_year), 1)", "Âge moyen (ans)"),
+            ],
+            "adhoc_filters": where("airline_name is not null"),
+            "timeseries_limit_metric": AIRCRAFT,
+            "order_desc": True,
+            "row_limit": 20,
+            "time_range": "No filter",
+        },
+        8,
+        50,
+    ),
+]
+
+
 class Superset:
     def __init__(self, url: str, user: str, password: str) -> None:
         self.client = httpx.Client(base_url=url.rstrip("/"), timeout=60)
@@ -404,6 +557,12 @@ caractéristiques de trajectoire, et **déroutements** (arrivée différente de 
 habituelle du callsign). Les modèles ne s'entraînent qu'au-delà d'un seuil d'historique.
 """
 
+FLEET_INTRO = """### Compagnies et flotte
+Chaque avion observé est rapproché de la **base aéronefs OpenSky** (immatriculation, type,
+opérateur) et des **types OACI** (Doc 8643 : motorisation, catégorie de sillage). La
+compagnie vient du préfixe OACI du callsign (OpenFlights), sinon de l'opérateur déclaré.
+"""
+
 DASHBOARDS: list[dict[str, Any]] = [
     {
         "slug": "skyradar",
@@ -428,6 +587,19 @@ DASHBOARDS: list[dict[str, Any]] = [
             ["eta_mae", "eta_baseline", "eta_mape"],
             ["eta_history", "forecast"],
             ["outliers", "diversions"],
+        ],
+    },
+    {
+        "slug": "skyradar-fleet",
+        "title": "SkyRadar — Compagnies et flotte",
+        "intro": FLEET_INTRO,
+        "charts": FLEET_CHARTS,
+        "rows": [
+            ["intro"],
+            ["airlines_count", "registry_coverage", "heavies"],
+            ["airline_activity"],
+            ["airline_flights", "types"],
+            ["wake", "fleets"],
         ],
     },
 ]

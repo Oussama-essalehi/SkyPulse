@@ -47,3 +47,21 @@ models:
       - name: longitude
         data_tests:
           - value_between: {arguments: {min_value: -180, max_value: 180}}
+
+  - name: stg_aircraft_registry
+    description: OpenSky aircraft database, one row per icao24 (empty if not downloaded).
+    columns:
+      - name: icao24
+        data_tests: [unique, not_null]
+
+  - name: stg_aircraft_types
+    description: ICAO Doc 8643 aircraft types, one row per type designator.
+    columns:
+      - name: typecode
+        data_tests: [unique, not_null]
+
+  - name: stg_airlines
+    description: OpenFlights airlines with a valid 3-letter ICAO designator.
+    columns:
+      - name: airline_icao
+        data_tests: [unique, not_null]

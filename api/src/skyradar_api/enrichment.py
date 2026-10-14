@@ -1,4 +1,4 @@
-"""Enrich live aircraft with the analytics layer: probable route and ETA.
+"""Enrich live aircraft with the analytics layer: aircraft, airline, route and ETA.
 
 Everything here is read-only and optional. The marts (Parquet written by dbt and the
 ML layer) are mounted read-only; when they are absent (``demo`` profile) the API simply
@@ -7,6 +7,9 @@ returns no route and no ETA.
 * Departure: the in-progress reconstructed flight of the aircraft (``fct_flights``).
 * Probable arrival: the usual destination of the callsign from that departure
   (``fct_callsign_routes``), or its dominant route when the departure is unknown.
+* Aircraft: registration, type and operator from the OpenSky aircraft database
+  (``dim_aircraft_registry``, point lookups, cached); airline from the callsign prefix
+  (``dim_airlines``).
 * ETA: the LightGBM model exported by Dagster (``models/eta_model.txt``), which corrects
   the naive estimate (remaining great-circle distance / ground speed). Without a model
   (not enough history yet) the naive estimate is returned, labelled as such.
@@ -19,6 +22,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -35,6 +39,21 @@ log = structlog.get_logger(__name__)
 
 EARTH_RADIUS_KM = 6371.0
 FLIGHT_MAX_AGE_S = 20 * 3600
+AIRLINE_CALLSIGN = re.compile(r"^([A-Z]{3})\d")
+REGISTRY_CACHE_SIZE = 20_000
+REGISTRY_COLUMNS = (
+    "registration",
+    "typecode",
+    "manufacturer",
+    "model",
+    "type_name",
+    "wake_category",
+    "engine_type",
+    "engine_count",
+    "operator",
+    "operator_icao",
+    "built_year",
+)
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -89,6 +108,8 @@ class Enrichment:
     dominant_routes: dict[str, Route] = field(default_factory=dict)
     current_flights: dict[str, tuple[str, float]] = field(default_factory=dict)
     model: EtaModel | None = None
+    airlines: dict[str, str] = field(default_factory=dict)
+    _registry_cache: dict[str, dict[str, Any] | None] = field(default_factory=dict)
     _signature: tuple[float, ...] = ()
     _checked_at: float = 0.0
 
@@ -100,6 +121,8 @@ class Enrichment:
             self.root / "fct_flights.parquet",
             self.root / "models" / "eta_model.txt",
             self.root / "models" / "eta_model.json",
+            self.root / "dim_airlines.parquet",
+            self.root / "dim_aircraft_registry.parquet",
         ]
 
     def refresh(self, force: bool = False) -> None:
@@ -120,7 +143,22 @@ class Enrichment:
         return duckdb.connect(":memory:").execute(sql).fetchall()
 
     def _load(self) -> None:
-        airports_file, routes_file, flights_file, model_file, meta_file = self._files()
+        (
+            airports_file,
+            routes_file,
+            flights_file,
+            model_file,
+            meta_file,
+            airlines_file,
+            _registry_file,
+        ) = self._files()
+        self._registry_cache = {}
+        if airlines_file.exists():
+            self.airlines = dict(
+                self._query(
+                    f"select airline_icao, airline_name from read_parquet('{airlines_file}')"
+                )
+            )
         if airports_file.exists():
             self.airports = {
                 icao: Airport(icao, name, float(lat), float(lon))
@@ -158,6 +196,7 @@ class Enrichment:
             airports=len(self.airports),
             routes=len(self.routes),
             current_flights=len(self.current_flights),
+            airlines=len(self.airlines),
             eta_model=self.model is not None,
         )
 
@@ -179,6 +218,51 @@ class Enrichment:
         )
 
     # ------------------------------------------------------------------ queries
+    def aircraft(self, state: StateVector) -> dict[str, Any] | None:
+        """Type and operator of the aircraft, airline of its current callsign.
+
+        Blocking (a DuckDB point query on a ~16 MB Parquet file, ~15 ms warm): call it
+        from a worker thread.
+        """
+        self.refresh()
+        info = self._registry(state.icao24)
+        match = AIRLINE_CALLSIGN.match(state.callsign or "")
+        airline = match.group(1) if match else (info or {}).get("operator_icao")
+        if info is None and airline is None:
+            return None
+        return {
+            **(info or {}),
+            "airline_icao": airline,
+            "airline_name": self.airlines.get(airline) if airline else None,
+            "in_registry": info is not None,
+        }
+
+    def _registry(self, icao24: str) -> dict[str, Any] | None:
+        if icao24 in self._registry_cache:
+            return self._registry_cache[icao24]
+        path = self.root / "dim_aircraft_registry.parquet"
+        info: dict[str, Any] | None = None
+        if path.exists():
+            try:
+                rows = (
+                    duckdb.connect(":memory:")
+                    .execute(
+                        f"select {', '.join(REGISTRY_COLUMNS)} "
+                        f"from read_parquet('{path}') where icao24 = ?",
+                        [icao24],
+                    )
+                    .fetchall()
+                )
+            except duckdb.Error as exc:  # file being rewritten by dbt: retry next time
+                log.warning("registry_lookup_failed", icao24=icao24, error=str(exc))
+                return None
+            if rows:
+                info = dict(zip(REGISTRY_COLUMNS, rows[0], strict=True))
+        if len(self._registry_cache) >= REGISTRY_CACHE_SIZE:
+            self._registry_cache.clear()
+        self._registry_cache[icao24] = info
+        return info
+
     def flight(self, state: StateVector) -> dict[str, Any] | None:
         self.refresh()
         current = self.current_flights.get(state.icao24)
