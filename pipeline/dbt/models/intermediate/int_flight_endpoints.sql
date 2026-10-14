@@ -86,6 +86,8 @@ nearest as (
 
 select
     s.*,
+    dep_low.is_low as departure_is_low,
+    arr_low.is_low as arrival_is_low,
     dep.airport_icao as departure_airport,
     dep.airport_name as departure_airport_name,
     dep.distance_km as departure_match_km,
@@ -93,5 +95,7 @@ select
     arr.airport_name as arrival_airport_name,
     arr.distance_km as arrival_match_km
 from summary as s
+left join endpoints as dep_low on dep_low.flight_id = s.flight_id and dep_low.endpoint = 'departure'
+left join endpoints as arr_low on arr_low.flight_id = s.flight_id and arr_low.endpoint = 'arrival'
 left join nearest as dep on dep.flight_id = s.flight_id and dep.endpoint = 'departure'
 left join nearest as arr on arr.flight_id = s.flight_id and arr.endpoint = 'arrival'

@@ -45,6 +45,7 @@ ALLOWED_TABLES = (
     "ml_traffic_forecast",
     "ml_flight_anomaly_scores",
     "ml_model_metrics",
+    "ml_endpoint_clusters",
 )
 QUERY_TIMEOUT_S = float(os.getenv("ASSISTANT_QUERY_TIMEOUT_SECONDS", "10"))
 

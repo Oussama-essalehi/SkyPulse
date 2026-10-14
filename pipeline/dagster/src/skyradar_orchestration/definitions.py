@@ -22,7 +22,7 @@ from dagster import (
 )
 from dagster_dbt import DbtCliResource, DbtProject, dbt_assets
 
-from skyradar_ml import eta, forecast, outliers
+from skyradar_ml import endpoints, eta, forecast, outliers
 from skyradar_ml.marts import read_mart
 from skyradar_ml.reconstruction import track_reconstruction_quality
 from skyradar_orchestration import alerts, compaction
@@ -160,6 +160,31 @@ def trajectory_outliers(context: AssetExecutionContext) -> MaterializeResult:
 
 
 @asset(
+    deps=[AssetKey(["ml_unmatched_endpoints"])],
+    group_name="ml_scoring",
+    kinds={"sklearn", "mlflow"},
+    description="DBSCAN clusters of take-offs / landings far from any known airport.",
+)
+def endpoint_clusters(context: AssetExecutionContext) -> MaterializeResult:
+    result = endpoints.run()
+    context.log.info(
+        f"endpoint clusters: {result.status} {result.reason} "
+        f"{result.n_clusters} clusters, {result.n_noise}/{result.n_endpoints} noise"
+    )
+    return MaterializeResult(
+        metadata=_meta(
+            {
+                "status": result.status,
+                "reason": result.reason,
+                "n_endpoints": result.n_endpoints,
+                "n_clusters": result.n_clusters,
+                "n_noise": result.n_noise,
+            }
+        )
+    )
+
+
+@asset(
     deps=[AssetKey(["fct_diversions"])],
     group_name="ml_scoring",
     kinds={"python", "kafka"},
@@ -225,6 +250,7 @@ defs = Definitions(
         eta_model,
         traffic_forecast,
         trajectory_outliers,
+        endpoint_clusters,
         diversion_alerts,
         lake_compaction,
     ],

@@ -63,6 +63,10 @@ TABLE_DOCS: dict[str, str] = {
     "(prévision des prochaines heures), value, model.",
     "ml_flight_anomaly_scores": "Score Isolation Forest par vol (anomaly_score, is_outlier, "
     "explanation).",
+    "ml_endpoint_clusters": "Clusters DBSCAN de décollages / atterrissages loin de tout "
+    "aéroport connu (terrains, héliports non référencés) : latitude, longitude, n_endpoints, "
+    "n_aircraft, nearest_ident / nearest_type / nearest_name / nearest_km (entrée OurAirports "
+    "la plus proche, tous types).",
     "ml_model_metrics": "Historique des métriques des modèles (model, metric, value, "
     "baseline_value, trained_at).",
 }
