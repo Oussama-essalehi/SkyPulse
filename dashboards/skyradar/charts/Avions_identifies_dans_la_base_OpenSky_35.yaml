@@ -1,0 +1,19 @@
+slice_name: "Avions identifi\xE9s dans la base OpenSky"
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  metric:
+    expressionType: SQL
+    sqlExpression: AVG(CASE WHEN in_registry THEN 1.0 ELSE 0 END)
+    label: "Identifi\xE9s"
+  subheader: "immatriculation, type et op\xE9rateur connus"
+  y_axis_format: .1%
+  datasource: 22__table
+query_context: null
+cache_timeout: null
+uuid: 5cee4afe-2f11-4ed5-b9ff-db9afebf6314
+version: 1.0.0
+dataset_uuid: ea669223-2af5-4095-b6a4-5d4f26c6b5e7
