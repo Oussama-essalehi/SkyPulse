@@ -7,9 +7,10 @@ et un assistant en langage naturel.**
 Projet portfolio de bout en bout : ingestion temps réel, streaming, data engineering,
 analytics, ML et IA générative.
 
-![Carte SkyRadar : ~11 000 avions réels (données OpenSky) au-dessus de l'Europe](docs/images/map.png)
-<sub>Capture réelle (13/10/2026) : 11 242 avions suivis, couleur selon l'altitude, positions
-interpolées entre deux snapshots.</sub>
+![Carte SkyRadar en direct : de l'Europe à l'Amérique du Nord, recherche d'un vol et fiche avion](docs/images/map.gif)
+<sub>Enregistrement réel (14/10/2026, 00 h 25 UTC, accéléré 4,5×) : ~5 000 avions suivis la
+nuit européenne, couleur selon l'altitude, recherche d'un vol puis fiche. En journée, la carte
+en suit plus de 11 000 ([capture](docs/images/map.png)).</sub>
 
 | Fiche avion + alerte détectée en direct | Mobile |
 |---|---|
