@@ -14,7 +14,7 @@ fetch_values_predicate: null
 extra: null
 normalize_columns: false
 always_filter_main_dttm: false
-uuid: 2893515f-1b32-4db4-bfc4-1ac4d72dd7d7
+uuid: 1317397a-3052-465f-bb8a-fe3743b55c66
 metrics:
 - metric_name: count
   verbose_name: COUNT(*)
@@ -25,126 +25,6 @@ metrics:
   currency: null
   extra: null
   warning_text: null
-columns:
-- column_name: hour
-  verbose_name: null
-  is_dttm: true
-  is_active: true
-  type: DATETIME
-  advanced_data_type: null
-  groupby: true
-  filterable: true
-  expression: ''
-  description: null
-  python_date_format: null
-  extra: null
-- column_name: arrivals
-  verbose_name: null
-  is_dttm: false
-  is_active: true
-  type: FLOAT
-  advanced_data_type: null
-  groupby: true
-  filterable: true
-  expression: ''
-  description: null
-  python_date_format: null
-  extra: null
-- column_name: departures
-  verbose_name: null
-  is_dttm: false
-  is_active: true
-  type: FLOAT
-  advanced_data_type: null
-  groupby: true
-  filterable: true
-  expression: ''
-  description: null
-  python_date_format: null
-  extra: null
-- column_name: latitude
-  verbose_name: null
-  is_dttm: false
-  is_active: true
-  type: FLOAT
-  advanced_data_type: null
-  groupby: true
-  filterable: true
-  expression: ''
-  description: null
-  python_date_format: null
-  extra: null
-- column_name: longitude
-  verbose_name: null
-  is_dttm: false
-  is_active: true
-  type: FLOAT
-  advanced_data_type: null
-  groupby: true
-  filterable: true
-  expression: ''
-  description: null
-  python_date_format: null
-  extra: null
-- column_name: movements
-  verbose_name: null
-  is_dttm: false
-  is_active: true
-  type: FLOAT
-  advanced_data_type: null
-  groupby: true
-  filterable: true
-  expression: ''
-  description: null
-  python_date_format: null
-  extra: null
-- column_name: airport_icao
-  verbose_name: null
-  is_dttm: false
-  is_active: true
-  type: STRING
-  advanced_data_type: null
-  groupby: true
-  filterable: true
-  expression: ''
-  description: null
-  python_date_format: null
-  extra: null
-- column_name: airport_name
-  verbose_name: null
-  is_dttm: false
-  is_active: true
-  type: STRING
-  advanced_data_type: null
-  groupby: true
-  filterable: true
-  expression: ''
-  description: null
-  python_date_format: null
-  extra: null
-- column_name: iso_country
-  verbose_name: null
-  is_dttm: false
-  is_active: true
-  type: STRING
-  advanced_data_type: null
-  groupby: true
-  filterable: true
-  expression: ''
-  description: null
-  python_date_format: null
-  extra: null
-- column_name: airport_iata
-  verbose_name: null
-  is_dttm: false
-  is_active: true
-  type: null
-  advanced_data_type: null
-  groupby: true
-  filterable: true
-  expression: ''
-  description: null
-  python_date_format: null
-  extra: null
+columns: []
 version: 1.0.0
-database_uuid: e8263dca-b8b0-424d-803a-4c2294979d9d
+database_uuid: 3bee14d9-1045-4816-8599-e3c14ea60984

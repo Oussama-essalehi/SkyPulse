@@ -1,0 +1,19 @@
+slice_name: "Compagnies observ\xE9es"
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  viz_type: big_number_total
+  metric:
+    expressionType: SQL
+    sqlExpression: COUNT(DISTINCT airline_icao)
+    label: Compagnies
+  subheader: "pr\xE9fixe OACI du callsign (AFR1234 -> Air France)"
+  y_axis_format: ',d'
+  datasource: 23__table
+query_context: null
+cache_timeout: null
+uuid: 1514196a-146f-420a-ab9e-c7ac344e26ff
+version: 1.0.0
+dataset_uuid: 53e2eaf2-ed61-443f-bfb9-3655027cd482
