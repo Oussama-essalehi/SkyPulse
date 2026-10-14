@@ -131,7 +131,7 @@ export class AircraftStore {
     const ids: string[] = [];
     let k = 0;
     for (const a of this.aircraft.values()) {
-      if (a.icao24 !== selected && (focus || !this.matches(a, filters))) continue;
+      if (a.icao24 !== selected && ((focus && selected) || !this.matches(a, filters))) continue;
       const [lon, lat] = this.position(a, now);
       buf.positions[2 * k] = lon;
       buf.positions[2 * k + 1] = lat;
