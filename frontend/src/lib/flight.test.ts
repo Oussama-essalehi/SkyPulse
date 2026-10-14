@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   airportLabel,
+  cleanTrack,
   clock,
   duration,
   flightBounds,
@@ -163,5 +164,60 @@ describe("flightPath", () => {
       ]),
     ).toBeNull();
     expect(flightBounds([])).toBeNull();
+  });
+});
+
+describe("cleanTrack", () => {
+  const t0 = 1_800_000_000;
+  it("drops an isolated ADS-B glitch", () => {
+    const track: TrailPoint[] = [
+      [2.0, 48.0, 9000, t0],
+      [105.0, 47.0, 9000, t0 + 60], // "Mongolia" one minute later
+      [2.3, 48.1, 9000, t0 + 120],
+    ];
+    expect(cleanTrack(track).map((p) => p[0])).toEqual([2.0, 2.3]);
+  });
+
+  it("keeps only the latest consistent stretch after impossible jumps", () => {
+    // The screenshot case: an aircraft sending garbage, thousands of km apart in minutes.
+    const garbage: TrailPoint[] = [
+      [105.0, 47.0, 0, t0], // Mongolia
+      [2.0, 47.0, 0, t0 + 300], // France
+      [60.0, -30.0, 0, t0 + 600], // Indian Ocean
+      [60.01, -30.01, 0, t0 + 660],
+    ];
+    expect(cleanTrack(garbage).map((p) => p[0])).toEqual([60.0, 60.01]);
+  });
+
+  it("leaves a normal track untouched", () => {
+    const track: TrailPoint[] = [
+      [2.0, 48.0, 9000, t0],
+      [2.5, 47.6, 9000, t0 + 300],
+      [3.0, 47.2, 9000, t0 + 600],
+    ];
+    expect(cleanTrack(track)).toEqual(track);
+  });
+
+  it("does not link the departure airport when it could not have been flown from", () => {
+    const berlin = {
+      icao: "EDDB",
+      iata: "BER",
+      name: "Berlin Brandenburg",
+      city: "Berlin",
+      country: "DE",
+      latitude: 52.36,
+      longitude: 13.5,
+    };
+    const flight = { ...base, departure: berlin, departure_time: t0 - 4 * 3600 };
+    const track: TrailPoint[] = [
+      [60.0, -30.0, 0, t0],
+      [60.01, -30.01, 0, t0 + 60],
+    ];
+    // ~9 300 km in 4 h: 650 m/s on average, no airliner does that.
+    expect(flightPath(track, flight, [60.01, -30.01]).fromDeparture).toBeNull();
+    // Over Poland 1 h after leaving Berlin: fine.
+    const poland: TrailPoint[] = [[19.0, 52.0, 10000, t0]];
+    const recent = { ...flight, departure_time: t0 - 3600 };
+    expect(flightPath(poland, recent, [19.1, 52.0]).fromDeparture).not.toBeNull();
   });
 });

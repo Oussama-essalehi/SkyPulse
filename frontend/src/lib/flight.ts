@@ -6,6 +6,34 @@ export type TrailPoint = [number, number, number | null, number];
 
 /** Gap above which the departure airport is linked to the start of the observed track. */
 const LINK_MIN_KM = 20;
+/**
+ * Implied speed above which two positions cannot both be right (~Mach 1.8): the same
+ * threshold as the warehouse (dbt `max_implied_speed_ms`). ADS-B glitches - bad position
+ * decoding, a transponder sending garbage - jump thousands of km in minutes.
+ */
+export const MAX_IMPLIED_SPEED_MS = 600;
+/** Fastest believable average ground speed of an airliner from take-off (~1 260 km/h). */
+const MAX_AVERAGE_SPEED_MS = 350;
+
+function impliedSpeed(a: TrailPoint, b: TrailPoint): number {
+  const dt = Math.max(1, Math.abs(b[3] - a[3]));
+  return (haversineKm(a[0], a[1], b[0], b[1]) * 1000) / dt;
+}
+
+/**
+ * The believable part of a track: isolated glitches (impossible to reach from both
+ * neighbours) are dropped, then only the latest consistent stretch is kept (everything
+ * before the last impossible jump is discarded, whichever side was wrong).
+ */
+export function cleanTrack(points: TrailPoint[]): TrailPoint[] {
+  const ok = (a: TrailPoint, b: TrailPoint) => impliedSpeed(a, b) <= MAX_IMPLIED_SPEED_MS;
+  const unspiked = points.filter(
+    (p, i) => i === 0 || i === points.length - 1 || ok(points[i - 1], p) || ok(p, points[i + 1]),
+  );
+  let start = unspiked.length - 1;
+  while (start > 0 && ok(unspiked[start - 1], unspiked[start])) start--;
+  return unspiked.slice(Math.max(start, 0));
+}
 
 export function duration(seconds: number): string {
   const total = Math.max(0, Math.round(seconds / 60));
@@ -52,16 +80,36 @@ export function flightPath(
   fromDeparture: [number, number][] | null;
   toArrival: [number, number][] | null;
 } {
-  let points = trail ?? [];
+  let points = cleanTrack(trail ?? []);
   const takeoff = flight?.departure_time_estimated ? null : flight?.departure_time;
   if (takeoff) points = points.filter((p) => p[3] >= takeoff - 120);
   const observed = points.map((p): [number, number] => [p[0], p[1]]);
   if (current) observed.push(current);
   return {
     observed,
-    fromDeparture: link(airportPoint(flight?.departure), observed[0]),
+    fromDeparture: reachable(flight, points[0], observed[0])
+      ? link(airportPoint(flight?.departure), observed[0])
+      : null,
     toArrival: link(current, airportPoint(flight?.arrival)),
   };
+}
+
+/**
+ * Could the aircraft have flown from its departure airport to where it was first seen,
+ * in the time since take-off? If not, the departure (or that position) is wrong: no link.
+ */
+function reachable(
+  flight: FlightInfo | null | undefined,
+  first: TrailPoint | undefined,
+  start: [number, number] | undefined,
+): boolean {
+  const origin = airportPoint(flight?.departure);
+  if (!origin || !start || !flight?.departure_time) return true;
+  const at = first ? first[3] : Date.now() / 1000;
+  const seconds = Math.max(60, at - flight.departure_time);
+  return (
+    (haversineKm(origin[0], origin[1], start[0], start[1]) * 1000) / seconds <= MAX_AVERAGE_SPEED_MS
+  );
 }
 
 function airportPoint(airport: AirportInfo | null | undefined): [number, number] | undefined {
@@ -102,7 +150,7 @@ export function flightBounds(
 
 /** Bounds of a whole flight: departure, observed track, aircraft, destination. */
 export function flightFrame(detail: AircraftDetail): [[number, number], [number, number]] | null {
-  const points: [number, number][] = detail.trail.map((p) => [p[0], p[1]]);
+  const points: [number, number][] = cleanTrack(detail.trail).map((p) => [p[0], p[1]]);
   points.push([detail.state.longitude, detail.state.latitude]);
   for (const end of [detail.flight?.departure, detail.flight?.arrival]) {
     const point = airportPoint(end);
