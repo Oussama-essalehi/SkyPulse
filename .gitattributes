@@ -1,0 +1,6 @@
+# Everything runs in Linux containers: keep LF line endings even on a Windows checkout
+# (a CRLF shell script fails there with "bash\r: not found").
+* text=auto eol=lf
+*.png binary
+*.gif binary
+*.parquet binary
