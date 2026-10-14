@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { airportLabel, clock, duration, sourceNotes } from "./flight";
+import { airportLabel, clock, duration, placeName, sourceNotes } from "./flight";
 import type { FlightInfo } from "./types";
 
 const base: FlightInfo = {
@@ -75,5 +75,13 @@ describe("flight formatting", () => {
       "Destination habituelle de ce callsign dans l'historique (12 vols, 75 %).",
       "Route publiée EGLL → VOBL ignorée : incohérente avec la position.",
     ]);
+  });
+});
+
+describe("placeName", () => {
+  it("drops the commune detail of OurAirports", () => {
+    expect(placeName("Paris (Roissy-en-France, Val-d'Oise)")).toBe("Paris");
+    expect(placeName("Lyon")).toBe("Lyon");
+    expect(placeName(null)).toBeNull();
   });
 });

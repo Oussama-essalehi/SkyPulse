@@ -41,6 +41,7 @@ docker compose -f docker-compose.yml -f deploy/compose.prod.yml --profile demo u
 |---|---|---|
 | Coût de l'assistant (chaque question appelle un LLM) | 5 questions / min et 40 / jour par client, **300 / jour au total** | `API_RATE_ASSISTANT`, `API_ASSISTANT_BUDGET` |
 | Clics en rafale sur les avions (une recherche de route par clic) | 60 fiches / min par client | `API_RATE_AIRCRAFT` |
+| Tableaux d'aéroport (jusqu'à 40 recherches de route chacun) | 20 tableaux / min par client ; vers adsbdb : 6 requêtes en parallèle et **300 / min au total** | `API_RATE_AIRPORT`, `ADSBDB_BUDGET` |
 | Connexions WebSocket ouvertes en masse | 4 par client | `API_MAX_WS_PER_CLIENT` |
 | Outils d'administration sans authentification | Ports fermés, accès par Caddy avec mot de passe | `ADMIN_USER`, `ADMIN_PASSWORD_HASH` |
 
@@ -102,6 +103,12 @@ Fly.io : skyradar-anomaly   ◄──────────────┘─�
    ```
    L'ingestion doit tourner sur **une seule machine** (`--ha=false`) : deux instances
    consommeraient deux fois le quota OpenSky.
+   **Vue aéroport** : l'API lit les aéroports dans `/data/reference/airports.csv`
+   (OurAirports, `make seed`). Sur Fly.io, créer un petit volume, le monter sur
+   `/data/reference` (`[mounts]` dans `deploy/fly/api.toml`) et y déposer le fichier
+   (`fly ssh sftp shell -a skyradar-api`, puis `put data/reference/airports.csv
+   /data/reference/airports.csv`). Sans ce fichier, la carte n'affiche simplement pas
+   d'aéroports.
 3. **Cloudflare Pages** : projet relié au dépôt GitHub.
    - Build command : `cd frontend && npm ci && npm run build`
    - Output directory : `frontend/dist`

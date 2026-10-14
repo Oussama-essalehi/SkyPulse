@@ -8,6 +8,9 @@ interface Palette {
   unknown: RGB;
   selected: RGB;
   trail: [number, number, number, number];
+  /** Airport ring and label, airport fill (drawn under the aircraft). */
+  airport: RGB;
+  airportFill: RGB;
 }
 
 /**
@@ -29,6 +32,8 @@ export const PALETTES: Record<Theme, Palette> = {
     unknown: [148, 163, 184],
     selected: [255, 255, 255],
     trail: [56, 189, 248, 200],
+    airport: [203, 213, 225],
+    airportFill: [15, 23, 36],
   },
   grey: {
     stops: [
@@ -43,6 +48,8 @@ export const PALETTES: Record<Theme, Palette> = {
     unknown: [71, 85, 105],
     selected: [15, 23, 42],
     trail: [3, 105, 161, 220],
+    airport: [30, 41, 59],
+    airportFill: [241, 243, 246],
   },
 };
 

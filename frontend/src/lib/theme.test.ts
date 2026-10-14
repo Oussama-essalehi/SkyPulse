@@ -23,8 +23,8 @@ describe("palettes", () => {
 
   it.each(["dark", "grey"] as Theme[])("%s: aircraft stay visible on land and water", (t) => {
     const { land, water } = MAP_THEMES[t];
-    const { stops, ground } = PALETTES[t];
-    for (const color of [...stops.map(([, c]) => c), ground]) {
+    const { stops, ground, airport } = PALETTES[t];
+    for (const color of [...stops.map(([, c]) => c), ground, airport]) {
       expect(contrast(color, hex(land))).toBeGreaterThanOrEqual(3);
       expect(contrast(color, hex(water))).toBeGreaterThanOrEqual(3);
     }

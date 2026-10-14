@@ -110,6 +110,26 @@ class Airport:
     iata: str | None = None
     city: str | None = None
     country: str | None = None
+    kind: str = "medium_airport"  # OurAirports type: large_airport, medium_airport...
+
+
+# Same selection as stg_airports / dim_airports, read straight from the OurAirports file
+# when the marts are not built (``demo`` profile).
+REFERENCE_AIRPORTS_SQL = """
+select
+    coalesce(nullif(icao_code, ''), nullif(gps_code, ''), ident) as airport_icao,
+    nullif(iata_code, '') as airport_iata,
+    name as airport_name,
+    type as airport_type,
+    municipality,
+    iso_country,
+    cast(latitude_deg as double) as latitude,
+    cast(longitude_deg as double) as longitude
+from read_csv('{path}', header = true, all_varchar = true)
+where type in ('large_airport', 'medium_airport')
+   or (type = 'small_airport' and scheduled_service = 'yes')
+qualify row_number() over (partition by airport_icao order by type, ident) = 1
+"""
 
 
 @dataclass
@@ -135,11 +155,17 @@ class Enrichment:
     root: Path = field(
         default_factory=lambda: Path(os.getenv("SKYRADAR_MARTS_ROOT", "/data/marts"))
     )
+    reference_root: Path = field(
+        default_factory=lambda: Path(os.getenv("SKYRADAR_REFERENCE_ROOT", "/data/reference"))
+    )
     reload_every_s: float = 60.0
     airports: dict[str, Airport] = field(default_factory=dict)
     routes: dict[tuple[str, str], Route] = field(default_factory=dict)
     dominant_routes: dict[str, Route] = field(default_factory=dict)
     current_flights: dict[str, tuple[str, float]] = field(default_factory=dict)
+    # Indexes for the airport board: usual arrival -> callsigns, departure -> icao24.
+    arrivals_index: dict[str, set[str]] = field(default_factory=dict)
+    departures_index: dict[str, set[str]] = field(default_factory=dict)
     model: EtaModel | None = None
     airlines: dict[str, str] = field(default_factory=dict)
     # (grid_lat, grid_lon, hour epoch) -> (speed m/s, direction from, degrees)
@@ -159,6 +185,7 @@ class Enrichment:
             self.root / "dim_airlines.parquet",
             self.root / "dim_aircraft_registry.parquet",
             self.root / "fct_upper_winds.parquet",
+            self.reference_root / "airports.csv",
         ]
 
     def refresh(self, force: bool = False) -> None:
@@ -193,6 +220,7 @@ class Enrichment:
             airlines_file,
             _registry_file,
             winds_file,
+            reference_airports,
         ) = self._files()
         self._registry_cache = {}
         if winds_file.exists():
@@ -209,10 +237,19 @@ class Enrichment:
                     f"select airline_icao, airline_name from read_parquet('{airlines_file}')"
                 )
             )
-        if airports_file.exists():
+        airport_rows = (
+            self._records(f"select * from read_parquet('{airports_file}')")
+            if airports_file.exists()
+            else self._records(REFERENCE_AIRPORTS_SQL.format(path=reference_airports))
+            if reference_airports.exists()
+            else None
+        )
+        if airport_rows is not None:
             self.airports = {}
-            for row in self._records(f"select * from read_parquet('{airports_file}')"):
+            for row in airport_rows:
                 icao = row["airport_icao"]
+                if row["latitude"] is None or row["longitude"] is None:
+                    continue
                 self.airports[icao] = Airport(
                     icao,
                     row["airport_name"],
@@ -221,6 +258,7 @@ class Enrichment:
                     row.get("airport_iata"),
                     row.get("municipality"),
                     row.get("iso_country"),
+                    row.get("airport_type") or "medium_airport",
                 )
         if routes_file.exists():
             rows = self._query(
@@ -245,6 +283,12 @@ class Enrichment:
                 """
             )
             self.current_flights = {icao: (dep, float(t)) for icao, dep, t in rows}
+        self.arrivals_index = {}
+        for (callsign, _), route in self.routes.items():
+            self.arrivals_index.setdefault(route.arrival, set()).add(callsign)
+        self.departures_index = {}
+        for icao24, (departure, _) in self.current_flights.items():
+            self.departures_index.setdefault(departure, set()).add(icao24)
         self.model = self._load_model(model_file, meta_file)
         log.info(
             "enrichment_loaded",
@@ -274,6 +318,10 @@ class Enrichment:
         )
 
     # ------------------------------------------------------------------ queries
+    def airline_name(self, callsign: str | None) -> str | None:
+        match = AIRLINE_CALLSIGN.match(callsign or "")
+        return self.airlines.get(match.group(1)) if match else None
+
     def aircraft(self, state: StateVector) -> dict[str, Any] | None:
         """Type and operator of the aircraft, airline of its current callsign.
 

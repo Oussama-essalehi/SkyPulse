@@ -23,6 +23,7 @@ import httpx
 import structlog
 
 from skyradar_api.metrics import ROUTE_LOOKUPS
+from skyradar_api.ratelimit import RateLimiter, parse_rules
 
 log = structlog.get_logger(__name__)
 
@@ -30,6 +31,9 @@ EARTH_RADIUS_KM = 6371.0
 CACHE_TTL_S = 6 * 3600
 NEGATIVE_TTL_S = 3600  # unknown callsigns / aircraft are asked again after an hour
 CACHE_SIZE = 20_000
+MAX_CONCURRENT_REQUESTS = 6  # towards adsbdb, whatever the number of clients
+# Requests per minute towards adsbdb, all clients together (a free community service).
+DEFAULT_REQUEST_BUDGET = "300/minute"
 
 
 @dataclass(frozen=True)
@@ -105,6 +109,10 @@ def check_route(
     return off <= 90
 
 
+class Throttled(Exception):
+    """The request budget towards adsbdb is spent: try again later (nothing cached)."""
+
+
 class _TtlCache:
     def __init__(self) -> None:
         self._data: dict[str, tuple[float, Any]] = {}
@@ -144,12 +152,20 @@ class RouteLookup:
         self._routes = _TtlCache()
         self._aircraft = _TtlCache()
         self._lock = asyncio.Lock()
+        self._slots = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+        self._budget = RateLimiter(
+            "adsbdb",
+            parse_rules(os.getenv("ADSBDB_BUDGET", DEFAULT_REQUEST_BUDGET)),
+            "adsbdb budget",
+        )
 
     async def aclose(self) -> None:
         if self._client is not None:
             await self._client.aclose()
 
     async def _get(self, path: str) -> dict[str, Any] | None:
+        if self._budget.check("all") is not None:
+            raise Throttled(path)
         if self._client is None:
             async with self._lock:
                 if self._client is None:
@@ -157,7 +173,8 @@ class RouteLookup:
                         timeout=self._timeout, headers={"User-Agent": "SkyRadar"}
                     )
         try:
-            response = await self._client.get(f"{self.base_url}/{path}")
+            async with self._slots:
+                response = await self._client.get(f"{self.base_url}/{path}")
         except httpx.HTTPError as exc:
             log.warning("route_lookup_failed", path=path, error=str(exc))
             raise
@@ -166,6 +183,14 @@ class RouteLookup:
         response.raise_for_status()
         payload = response.json().get("response")
         return payload if isinstance(payload, dict) else None
+
+    def cached(self, callsign: str | None) -> FlightRoute | None:
+        """Route already known for this callsign, without any network call."""
+        found, route = self._routes.get((callsign or "").strip().upper())
+        return route if found else None
+
+    def is_cached(self, callsign: str | None) -> bool:
+        return self._routes.get((callsign or "").strip().upper())[0]
 
     async def route(self, callsign: str | None) -> FlightRoute | None:
         callsign = (callsign or "").strip().upper()
@@ -177,6 +202,9 @@ class RouteLookup:
             return cached  # type: ignore[no-any-return]
         try:
             payload = await self._get(f"callsign/{callsign}")
+        except Throttled:
+            ROUTE_LOOKUPS.labels("route", "throttled").inc()
+            return None
         except (httpx.HTTPError, ValueError):
             ROUTE_LOOKUPS.labels("route", "error").inc()
             return None  # not cached: a transient error is retried on the next click
@@ -207,6 +235,9 @@ class RouteLookup:
             return cached  # type: ignore[no-any-return]
         try:
             payload = await self._get(f"aircraft/{key}")
+        except Throttled:
+            ROUTE_LOOKUPS.labels("aircraft", "throttled").inc()
+            return None
         except (httpx.HTTPError, ValueError):
             ROUTE_LOOKUPS.labels("aircraft", "error").inc()
             return None

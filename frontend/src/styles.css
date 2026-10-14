@@ -750,3 +750,157 @@ td {
   align-items: center;
   gap: 6px;
 }
+
+/* Airport board (click an airport on the map, or search its code). */
+.airport-panel {
+  width: 380px;
+}
+
+.airport-code {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.board-tabs {
+  margin: 12px 0 8px;
+}
+
+.board-tabs button {
+  flex: 1;
+  justify-content: center;
+  padding: 6px 4px;
+  font-size: 12px;
+}
+
+.tab-count {
+  min-width: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.board,
+.movements {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.board-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 92px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+}
+
+.board-row:hover {
+  background: var(--hover);
+}
+
+.board-callsign,
+.board-route,
+.board-time {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.board-callsign span,
+.board-route > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-time {
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-chip {
+  align-self: flex-start;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.board-chip-approach,
+.board-chip-climb {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.board-chip-arrived {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.board-empty {
+  padding: 12px 0;
+}
+
+.board-note {
+  margin: 12px 0 0;
+}
+
+.board-history p {
+  margin: 4px 0 8px;
+}
+
+.movement {
+  display: grid;
+  grid-template-columns: 44px 16px 80px 1fr auto;
+  gap: 6px;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.movement-dir.in {
+  color: var(--ok);
+}
+
+.movement-dir.out {
+  color: var(--accent);
+}
+
+.back-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.search-airport strong {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.airport-badge {
+  color: var(--accent);
+}
+
+@media (max-width: 760px) {
+  .airport-panel {
+    width: 100%;
+  }
+}
