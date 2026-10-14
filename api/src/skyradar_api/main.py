@@ -55,7 +55,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         configure_logging("api")
         tasks = [asyncio.create_task(broadcaster.run())]
         if settings.consume:
-            tasks.append(asyncio.create_task(consumer.run()))
+            tasks.append(asyncio.create_task(consumer.supervise()))
         yield
         for task in tasks:
             task.cancel()
