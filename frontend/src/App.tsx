@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AircraftPanel } from "./components/AircraftPanel";
 import { AirportPanel } from "./components/AirportPanel";
 import { AlertBanner, AlertsPanel } from "./components/AlertsPanel";
-import { AssistantPanel } from "./components/AssistantPanel";
+import { AssistantChat } from "./components/AssistantChat";
 import { FiltersPanel } from "./components/FiltersPanel";
 import { Legend } from "./components/Legend";
 import { type FitTarget, type FlyTarget, MapView } from "./components/MapView";
@@ -24,6 +24,7 @@ export default function App() {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [selected, setSelected] = useState<string | null>(null);
   const [panel, setPanel] = useState<PanelName>(null);
+  const [chatOpen, setChatOpen] = useState(false);
   const [detail, setDetail] = useState<AircraftDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [flyTo, setFlyTo] = useState<FlyTarget | null>(null);
@@ -184,7 +185,7 @@ export default function App() {
   const current = detail?.state.icao24 === selected ? detail : null;
 
   return (
-    <div className="app">
+    <div className={`app${chatOpen ? " chat-open" : ""}`}>
       <MapView
         store={store}
         filters={filters}
@@ -198,6 +199,7 @@ export default function App() {
         flight={current?.flight ?? null}
         flyTo={flyTo}
         fitTo={fitTo}
+        chatOpen={chatOpen}
       />
       <TopBar
         store={store}
@@ -207,6 +209,8 @@ export default function App() {
         criticalCount={criticalCount}
         panel={panel}
         onPanel={setPanel}
+        chatOpen={chatOpen}
+        onChat={setChatOpen}
         onPick={pick}
         airports={airports}
         onPickAirport={pickAirport}
@@ -230,7 +234,6 @@ export default function App() {
             />
           )}
           {panel === "alerts" && <AlertsPanel alerts={alerts} onPick={pick} />}
-          {panel === "assistant" && <AssistantPanel />}
         </section>
       )}
       {selected && (
@@ -259,6 +262,7 @@ export default function App() {
           onPick={pickFromBoard}
         />
       )}
+      <AssistantChat open={chatOpen} onClose={() => setChatOpen(false)} />
       <Legend />
       <footer className="attribution">
         Données ADS-B ©{" "}
