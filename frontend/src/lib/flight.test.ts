@@ -6,8 +6,10 @@ import {
   clock,
   duration,
   flightBounds,
+  flightFrame,
   flightPath,
   placeName,
+  routeKnown,
   type TrailPoint,
 } from "./flight";
 import { haversineKm } from "./geo";
@@ -219,5 +221,37 @@ describe("cleanTrack", () => {
     const poland: TrailPoint[] = [[19.0, 52.0, 10000, t0]];
     const recent = { ...flight, departure_time: t0 - 3600 };
     expect(flightPath(poland, recent, [19.1, 52.0]).fromDeparture).not.toBeNull();
+  });
+});
+
+describe("routeKnown", () => {
+  const paris = {
+    icao: "LFPG",
+    iata: "CDG",
+    name: "Paris-Charles de Gaulle",
+    city: "Paris",
+    country: "FR",
+    latitude: 49.01,
+    longitude: 2.55,
+  } as FlightInfo["departure"];
+
+  it("needs a departure or a destination", () => {
+    expect(routeKnown(null)).toBe(false);
+    expect(routeKnown(base)).toBe(false);
+    expect(routeKnown({ ...base, departure: paris })).toBe(true);
+    expect(routeKnown({ ...base, arrival: paris })).toBe(true);
+  });
+
+  it("frames nothing for an unknown route (no line is drawn)", () => {
+    const detail = {
+      state: { longitude: -0.6, latitude: 46.4 },
+      trail: [
+        [-0.7, 47.9, 900, 1000],
+        [-0.6, 46.4, 750, 1600],
+      ],
+      flight: base,
+    } as unknown as Parameters<typeof flightFrame>[0];
+    expect(flightFrame(detail)).toBeNull();
+    expect(flightFrame({ ...detail, flight: { ...base, arrival: paris } })).not.toBeNull();
   });
 });

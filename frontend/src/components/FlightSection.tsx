@@ -1,4 +1,4 @@
-import { airportLabel, clock, duration } from "../lib/flight";
+import { airportLabel, clock, duration, routeKnown } from "../lib/flight";
 import type { EtaInfo, FlightInfo } from "../lib/types";
 
 interface Props {
@@ -21,7 +21,7 @@ function Time({ epoch, estimated }: { epoch: number; estimated?: boolean }) {
 }
 
 export function FlightSection({ flight, eta, onGround }: Props) {
-  if (!flight || (!flight.departure && !flight.arrival)) {
+  if (!flight || !routeKnown(flight)) {
     return (
       <section className="flight">
         <h3>Vol</h3>

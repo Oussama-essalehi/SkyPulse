@@ -63,6 +63,15 @@ export function airportLabel(airport: AirportInfo | null): { code: string; place
 }
 
 /**
+ * Whether the published route is known (departure or destination). When it is not
+ * (private, military or unpublished callsign), no line is drawn: the received positions
+ * alone, often sparse for low-flying aircraft, draw misleading straight lines.
+ */
+export function routeKnown(flight: FlightInfo | null | undefined): boolean {
+  return Boolean(flight && (flight.departure || flight.arrival));
+}
+
+/**
  * What to draw for the selected aircraft:
  * - `observed`: its positions as received, from the observed take-off when there is one
  *   (earlier points belong to the previous flight of the same aircraft);
@@ -150,6 +159,8 @@ export function flightBounds(
 
 /** Bounds of a whole flight: departure, observed track, aircraft, destination. */
 export function flightFrame(detail: AircraftDetail): [[number, number], [number, number]] | null {
+  // Unknown route: nothing is drawn, so there is no flight to frame.
+  if (!routeKnown(detail.flight)) return null;
   const points: [number, number][] = cleanTrack(detail.trail).map((p) => [p[0], p[1]]);
   points.push([detail.state.longitude, detail.state.latitude]);
   for (const end of [detail.flight?.departure, detail.flight?.arrival]) {
