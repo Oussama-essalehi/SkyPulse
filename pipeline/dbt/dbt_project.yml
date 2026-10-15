@@ -43,8 +43,8 @@ models:
       +materialized: external
       +format: parquet
     marts:
-      # Marts are written as standalone Parquet files: Superset, the assistant
-      # and the API read them through their own in-memory DuckDB connections,
+      # Marts are written as standalone Parquet files: Superset, the API
+      # and the ML layer read them through their own in-memory DuckDB connections,
       # so there is never a second process opening the dbt database file.
       +materialized: external
       +format: parquet

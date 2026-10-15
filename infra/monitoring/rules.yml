@@ -67,9 +67,3 @@ groups:
         labels: { severity: warning }
         annotations:
           summary: "Le sink Parquet prend du retard ({{ $value }} messages)"
-
-      - alert: AssistantBudgetReached
-        expr: increase(skyradar_api_rate_limited_total{limiter="assistant-budget"}[1h]) > 0
-        labels: { severity: info }
-        annotations:
-          summary: "Quota journalier de l'assistant atteint sur la démo"

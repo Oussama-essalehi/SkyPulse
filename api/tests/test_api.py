@@ -121,7 +121,6 @@ def test_rest_endpoints(client: TestClient) -> None:
     assert len(detail["trail"]) == 1
     assert client.get("/aircraft/ffffff").status_code == 404
     assert client.get("/aircraft", params={"q": "tst"}).json()[0]["icao24"] in {"abc123", "def456"}
-    assert client.post("/assistant/ask", json={"question": "combien ?"}).status_code == 503
     france = client.get(
         "/live/region", params={"lamin": 41, "lomin": -5, "lamax": 51.5, "lomax": 10}
     )

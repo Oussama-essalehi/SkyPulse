@@ -15,7 +15,7 @@ help: ## Show this help
 
 # ------------------------------------------------------------------ stack
 .PHONY: up up-demo down logs ps build replay record restart clean
-up: .env seed ## Start the full stack (live map, lake, Dagster, Superset, MLflow, assistant)
+up: .env seed ## Start the full stack (live map, lake, Dagster, Superset, MLflow, monitoring)
 	$(COMPOSE) --profile full up -d --build --wait
 	@$(MAKE) --no-print-directory urls
 
@@ -69,7 +69,7 @@ test-lake: ## Build a deterministic local lake for dbt tests
 	$(RUN) python scripts/build_test_lake.py --root $(TEST_LAKE)
 
 # ------------------------------------------------------------------- dev
-.PHONY: install test lint format typecheck dbt-parse dbt-build eval-assistant smoke test-ui test-monitoring front-dev
+.PHONY: install test lint format typecheck dbt-parse dbt-build smoke test-ui test-monitoring front-dev
 install: ## Install Python (uv) and frontend (npm) dependencies + pre-commit hooks
 	$(UV) sync --all-packages
 	cd frontend && npm ci
@@ -82,7 +82,7 @@ test: ## Unit tests (Python + frontend)
 lint: ## Linters and type checks
 	$(RUN) ruff check .
 	$(RUN) ruff format --check .
-	$(RUN) mypy libs/common/src ingestion/src api/src streaming/src assistant/src ml/src
+	$(RUN) mypy libs/common/src ingestion/src api/src streaming/src ml/src
 	cd frontend && npm run lint && npm run typecheck
 
 MONITORING = docker run --rm -v $(CURDIR)/infra/monitoring:/etc/prometheus:ro -w /etc/prometheus
@@ -106,9 +106,6 @@ dbt-parse: ## Compile the dbt manifest (needed by Dagster)
 dbt-build: test-lake ## dbt build (models + tests) on the test lake
 	mkdir -p pipeline/dbt/target/marts
 	$(DBT_ENV) $(UV) run --no-sync dbt build
-
-eval-assistant: dbt-build ## Evaluate the assistant (needs ANTHROPIC_API_KEY; DRY=1: references only; logged to MLflow if MLFLOW_TRACKING_URI is set)
-	SKYRADAR_MARTS_ROOT=$(CURDIR)/pipeline/dbt/target/marts $(RUN) python assistant/eval/run_eval.py $(if $(DRY),--dry-run,)
 
 smoke: ## End-to-end smoke test against a running stack (make up-demo first)
 	$(RUN) pytest -m integration tests -v

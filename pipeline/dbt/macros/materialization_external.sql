@@ -65,7 +65,7 @@
 
   -- SkyRadar override: upstream inserts a row of NULLs when the model is empty
   -- (to keep CSV headers). Parquet keeps the schema with zero rows, and the
-  -- phantom row would leak into Superset and the assistant, so it is skipped.
+  -- phantom row would leak into Superset and the API, so it is skipped.
   {% call statement('main', language='sql') -%}
     select 1
   {%- endcall %}

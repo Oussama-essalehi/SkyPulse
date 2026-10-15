@@ -31,7 +31,6 @@ mlruns/
 .idea/
 .vscode/
 *.tsbuildinfo
-assistant/eval/last_run.json
 
 # Playwright
 frontend/playwright-report/

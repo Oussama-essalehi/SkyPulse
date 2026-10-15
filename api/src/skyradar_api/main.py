@@ -1,8 +1,6 @@
 """SkyRadar live API.
 
 REST + WebSocket on top of the in-memory aircraft state built from Redpanda.
-No secret is ever sent to the browser: the assistant is reached through a
-server-side proxy.
 """
 
 from __future__ import annotations
@@ -13,9 +11,8 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-import httpx
 from fastapi import (
     FastAPI,
     HTTPException,
@@ -28,7 +25,6 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from prometheus_client import make_asgi_app
-from pydantic import BaseModel, Field
 
 from skyradar_api import metrics
 from skyradar_api.airports import AirportBoard
@@ -43,18 +39,6 @@ from skyradar_api.ws import Broadcaster
 from skyradar_common.kafka import KafkaSettings
 from skyradar_common.logging import configure_logging
 
-ASSISTANT_TIMEOUT_S = 600
-
-
-class Turn(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str = Field(min_length=1, max_length=2000)
-
-
-class AskRequest(BaseModel):
-    question: str = Field(min_length=3, max_length=500)
-    history: list[Turn] = Field(default_factory=list, max_length=24)
-
 
 def create_app(settings: ApiSettings | None = None) -> FastAPI:
     settings = settings or ApiSettings()
@@ -66,16 +50,6 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     broadcaster = Broadcaster(state, interval=settings.ws_push_interval_seconds)
     enrichment = Enrichment(root=Path(settings.marts_root))
     routes = RouteLookup()
-    assistant_limit = RateLimiter(
-        "assistant",
-        parse_rules(settings.rate_assistant),
-        "Trop de questions : réessayez dans un moment.",
-    )
-    assistant_budget = RateLimiter(
-        "assistant-budget",
-        parse_rules(settings.assistant_daily_budget),
-        "L'assistant a atteint son quota du jour sur cette démo : revenez demain.",
-    )
     aircraft_limit = RateLimiter(
         "aircraft", parse_rules(settings.rate_aircraft), "Trop de requêtes : ralentissez."
     )
@@ -164,7 +138,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         lamax: float = Query(..., ge=-90, le=90),
         lomax: float = Query(..., ge=-180, le=180),
     ) -> dict[str, Any]:
-        """Aircraft currently inside a bounding box (used by the assistant's live tool)."""
+        """Aircraft currently inside a bounding box."""
         if lamin > lamax:
             raise HTTPException(422, "lamin must be <= lamax")
         return state.region(lamin, lomin, lamax, lomax)
@@ -237,34 +211,6 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     @app.get("/alerts")
     async def alerts() -> list[dict[str, Any]]:
         return [a.model_dump(mode="json") for a in state.active_alerts()]
-
-    @app.post("/assistant/ask")
-    async def ask(request: AskRequest, http: Request) -> Any:
-        if not settings.assistant_url:
-            raise HTTPException(503, "assistant service is not enabled in this deployment")
-        assistant_limit.hit(client_ip(http, settings.client_ip_header))
-        assistant_budget.hit("all")
-        try:
-            # A local model (Ollama) on a laptop CPU can take minutes for a tool loop.
-            async with httpx.AsyncClient(timeout=ASSISTANT_TIMEOUT_S) as client:
-                response = await client.post(
-                    f"{settings.assistant_url.rstrip('/')}/ask", json=request.model_dump()
-                )
-        except httpx.ConnectError as exc:
-            # The assistant only runs in the "full" profile.
-            raise HTTPException(503, "assistant service is not running") from exc
-        except httpx.TimeoutException as exc:
-            raise HTTPException(
-                504,
-                "l'assistant met trop de temps à répondre (modèle local lent ou occupé) :"
-                " réessayez, ou choisissez un modèle plus léger",
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise HTTPException(502, f"assistant unreachable: {exc}") from exc
-        if response.status_code >= 400:
-            detail = response.json().get("detail", response.text) if response.content else ""
-            raise HTTPException(response.status_code, detail)
-        return response.json()
 
     @app.websocket("/ws/live")
     async def live(ws: WebSocket) -> None:

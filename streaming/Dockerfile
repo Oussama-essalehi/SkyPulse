@@ -11,7 +11,6 @@ COPY ingestion/pyproject.toml ingestion/
 COPY api/pyproject.toml api/
 COPY streaming/pyproject.toml streaming/
 COPY ml/pyproject.toml ml/
-COPY assistant/pyproject.toml assistant/
 COPY pipeline/dagster/pyproject.toml pipeline/dagster/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-workspace --package skyradar-streaming

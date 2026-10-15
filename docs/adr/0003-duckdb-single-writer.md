@@ -5,7 +5,7 @@
 
 ## Contexte
 Un fichier DuckDB n'accepte qu'un processus écrivain, et un écrivain empêche les autres
-processus de l'ouvrir. dbt écrit toutes les heures ; Superset, l'assistant et le ML lisent en
+processus de l'ouvrir. dbt écrit toutes les heures ; Superset, l'API et le ML lisent en
 continu.
 
 ## Décision
@@ -14,8 +14,7 @@ continu.
    `max_concurrent_runs: 1`), donc jamais deux `dbt build` en parallèle.
 2. Les **marts sont matérialisés en Parquet** (`materialized: external`) dans le volume `marts`.
 3. Les lecteurs ouvrent une connexion DuckDB **en mémoire** et lisent ces Parquet
-   (`read_parquet`), montés en lecture seule. L'assistant désactive en plus l'accès externe
-   (`enable_external_access = false`, `allowed_directories` limité aux marts).
+   (`read_parquet`), montés en lecture seule.
 
 ## Conséquences
 - (+) Aucun conflit de verrou, des lecteurs sans état, des marts lisibles par n'importe quel
