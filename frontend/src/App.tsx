@@ -7,6 +7,7 @@ import { FiltersPanel } from "./components/FiltersPanel";
 import { Legend } from "./components/Legend";
 import { type FitTarget, type FlyTarget, MapView } from "./components/MapView";
 import { type PanelName, TopBar } from "./components/TopBar";
+import { WelcomeDialog, welcomeSeen } from "./components/WelcomeDialog";
 import { fromColumns } from "./lib/airports";
 import { api } from "./lib/api";
 import { flightFrame } from "./lib/flight";
@@ -23,6 +24,8 @@ export default function App() {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [selected, setSelected] = useState<string | null>(null);
   const [panel, setPanel] = useState<PanelName>(null);
+  // Explains the site on the first visit; the "?" button of the top bar reopens it.
+  const [welcome, setWelcome] = useState(() => !welcomeSeen());
   const [detail, setDetail] = useState<AircraftDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [flyTo, setFlyTo] = useState<FlyTarget | null>(null);
@@ -206,11 +209,13 @@ export default function App() {
         criticalCount={criticalCount}
         panel={panel}
         onPanel={setPanel}
+        onHelp={() => setWelcome(true)}
         onPick={pick}
         airports={airports}
         onPickAirport={pickAirport}
       />
       <AlertBanner alerts={alerts} onPick={pick} />
+      <WelcomeDialog open={welcome} onClose={() => setWelcome(false)} />
       {panel && (
         <section className="side-panel">
           <button className="close" onClick={() => setPanel(null)} aria-label="Fermer">

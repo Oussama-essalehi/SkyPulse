@@ -1,4 +1,5 @@
 import { ALERT_LABELS } from "../lib/labels";
+import { AlertKey } from "./AlertKey";
 import type { Alert } from "../lib/types";
 
 function ago(epoch: number): string {
@@ -17,6 +18,15 @@ export function AlertsPanel({ alerts, onPick }: Props) {
   return (
     <div className="panel-body">
       <h2>Alertes actives</h2>
+      <details className="alert-help">
+        <summary>Que signifient les cercles sur la carte ?</summary>
+        <p className="small">
+          Chaque cercle entoure un avion repéré par le détecteur d'anomalies de SkyRadar. Sa couleur
+          indique le niveau :
+        </p>
+        <AlertKey />
+        <p className="small muted">Cliquez sur une alerte pour afficher l'avion concerné.</p>
+      </details>
       {alerts.length === 0 && <p className="muted">Aucune anomalie détectée pour le moment.</p>}
       <ul className="alert-list">
         {alerts.map((alert) => (

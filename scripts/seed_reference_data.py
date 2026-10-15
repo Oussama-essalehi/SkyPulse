@@ -63,6 +63,14 @@ def main() -> int:
     for name, url in files.items():
         try:
             download(url, args.dest / name, args.force)
+        except PermissionError as exc:
+            # Typically a folder created as root by Docker before this script ran.
+            print(
+                f"✗ {name}: {exc}\n  The folder belongs to another user: run"
+                f" `sudo chown -R $USER {args.dest}` and start again.",
+                file=sys.stderr,
+            )
+            return 1
         except OSError as exc:
             failures += 1
             print(f"✗ {name}: {exc}", file=sys.stderr)

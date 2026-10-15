@@ -27,6 +27,11 @@ function trackErrors(page: Page): string[] {
   return errors;
 }
 
+/** The welcome dialog opens on a first visit: the map tests start as returning visitors. */
+async function skipWelcome(page: Page): Promise<void> {
+  await page.addInitScript(() => window.localStorage.setItem("skyradar.welcome.seen", "1"));
+}
+
 async function aircraftCount(page: Page): Promise<number> {
   const text = await page.locator(".counter strong").innerText();
   return Number(text.replace(/\s/g, ""));
@@ -34,6 +39,7 @@ async function aircraftCount(page: Page): Promise<number> {
 
 test("live map: aircraft, aircraft card", async ({ page, request }) => {
   const errors = trackErrors(page);
+  await skipWelcome(page);
   await page.goto("/");
 
   // The WebSocket feeds the map: thousands of aircraft in production, hundreds in replay.
@@ -62,6 +68,7 @@ test("live map: aircraft, aircraft card", async ({ page, request }) => {
 
 test("legend above the map, airport filter with its weather", async ({ page }) => {
   const errors = trackErrors(page);
+  await skipWelcome(page);
   await page.goto("/");
   await expect(page.locator(".status")).toContainText("En direct", { timeout: 30_000 });
   await expect.poll(() => aircraftCount(page), { timeout: 60_000 }).toBeGreaterThan(10);
@@ -99,6 +106,7 @@ test("legend above the map, airport filter with its weather", async ({ page }) =
 
 test("airport board: search, live board, aircraft and back", async ({ page, request }) => {
   const errors = trackErrors(page);
+  await skipWelcome(page);
   await page.goto("/");
   await expect(page.locator(".status")).toContainText("En direct", { timeout: 30_000 });
   await expect.poll(() => aircraftCount(page), { timeout: 60_000 }).toBeGreaterThan(10);
@@ -127,6 +135,34 @@ test("airport board: search, live board, aircraft and back", async ({ page, requ
   await expect(board).toBeHidden();
   await card.getByRole("button", { name: /Tableau/ }).click();
   await expect(board).toContainText("LFPG");
+
+  expect(errors, errors.join("\n")).toEqual([]);
+});
+
+test("welcome dialog: first visit, remembered, reopened with the help button", async ({ page }) => {
+  const errors = trackErrors(page);
+  await page.goto("/");
+  const dialog = page.getByRole("dialog", { name: "Bienvenue sur SkyRadar" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Cliquez sur un avion");
+  await expect(dialog.locator(".alert-key li")).toHaveCount(3);
+  await dialog.getByRole("button", { name: "Explorer la carte" }).click();
+  await expect(dialog).toBeHidden();
+
+  // Not shown again on the next visit, but the "?" button reopens it (Escape closes it).
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Aide" })).toBeVisible();
+  await expect(dialog).toBeHidden();
+  await page.getByRole("button", { name: "Aide" }).click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+
+  // The legend and the Alertes panel explain the alert rings too.
+  await expect(page.locator(".legend-alerts")).toContainText("Urgence");
+  await page.getByRole("button", { name: /^Alertes/ }).click();
+  await page.getByText("Que signifient les cercles sur la carte ?").click();
+  await expect(page.locator(".alert-help .alert-key li")).toHaveCount(3);
 
   expect(errors, errors.join("\n")).toEqual([]);
 });
