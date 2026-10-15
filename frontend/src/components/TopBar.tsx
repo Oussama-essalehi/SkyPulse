@@ -15,6 +15,8 @@ interface Props {
   criticalCount: number;
   panel: PanelName;
   onPanel: (panel: PanelName) => void;
+  /** Reopens the welcome dialog (how to read the map). */
+  onHelp: () => void;
   onPick: (icao24: string) => void;
   airports: Airport[];
   onPickAirport: (icao: string) => void;
@@ -38,7 +40,7 @@ const SOURCE_LABEL: Record<string, string> = {
 
 export function TopBar(props: Props) {
   const { store, status, visible, alertCount, criticalCount, panel, onPanel, onPick } = props;
-  const { airports, onPickAirport } = props;
+  const { airports, onPickAirport, onHelp } = props;
   const [query, setQuery] = useState("");
   const hits = store.search(query, 6);
   const airportHits = searchAirports(airports, query);
@@ -126,6 +128,14 @@ export function TopBar(props: Props) {
               {alertCount}
             </span>
           )}
+        </button>
+        <button
+          className="help-button"
+          onClick={onHelp}
+          aria-label="Aide"
+          title="Comment lire la carte"
+        >
+          ?
         </button>
       </nav>
     </header>
