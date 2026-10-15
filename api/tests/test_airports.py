@@ -219,6 +219,42 @@ async def test_board_without_route_lookup_or_marts(
     assert await board.board("XXXX") is None
 
 
+def test_empty_airport_mart_falls_back_to_the_reference_file(tmp_path: Path) -> None:
+    """dbt ran before the reference data was downloaded: its dim_airports is empty."""
+    root = tmp_path / "marts"
+    root.mkdir()
+    write(
+        root,
+        "dim_airports",
+        "select 'LFPG' airport_icao, 'CDG' airport_iata, 'x' airport_name,"
+        " 'large_airport' airport_type, 'Paris' municipality, 'FR' iso_country,"
+        " 49.0 latitude, 2.5 longitude where false",
+    )
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    (reference / "airports.csv").write_text(
+        "id,ident,type,name,latitude_deg,longitude_deg,elevation_ft,continent,iso_country,"
+        "iso_region,municipality,scheduled_service,icao_code,iata_code,gps_code,local_code\n"
+        "1,LFPG,large_airport,Paris Charles de Gaulle,49.0097,2.5479,392,EU,FR,FR-IDF,"
+        "Paris,yes,LFPG,CDG,LFPG,\n"
+    )
+    board = AirportBoard(live(), Enrichment(root=root, reference_root=reference), RouteLookup())
+    assert board.airports()["icao"] == ["LFPG"]
+
+
+def test_empty_airport_list_is_not_cached(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No reference data yet: the browser must not keep the empty list, the map retries."""
+    monkeypatch.setenv("SKYRADAR_MARTS_ROOT", str(tmp_path / "missing"))
+    monkeypatch.setenv("SKYRADAR_REFERENCE_ROOT", str(tmp_path / "missing"))
+    monkeypatch.setenv("API_CONSUME", "false")
+    from skyradar_api.main import create_app
+
+    with TestClient(create_app()) as client:
+        listing = client.get("/airports")
+    assert listing.json()["icao"] == []
+    assert listing.headers["Cache-Control"] == "no-store"
+
+
 @pytest.mark.parametrize(
     ("lat", "lon", "altitude", "rate", "track", "expected"),
     [
@@ -253,6 +289,7 @@ def test_airport_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
         assert listing.status_code == 200
         assert listing.json()["iata"] == ["LHR", "LYS", "CDG"]
         assert listing.json()["kind"] == ["L", "L", "L"]
+        assert listing.headers["Cache-Control"] == "public, max-age=600"
         board = client.get("/airports/LFPG/board")
         assert board.status_code == 200
         assert board.json()["history"]["arrivals_24h"] == 1

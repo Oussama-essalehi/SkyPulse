@@ -241,10 +241,12 @@ class Enrichment:
         airport_rows = (
             self._records(f"select * from read_parquet('{airports_file}')")
             if airports_file.exists()
-            else self._records(REFERENCE_AIRPORTS_SQL.format(path=reference_airports))
-            if reference_airports.exists()
             else None
         )
+        # An empty mart (dbt ran before the reference data was downloaded) must not hide
+        # the airports: read the OurAirports file directly until the next dbt run.
+        if not airport_rows and reference_airports.exists():
+            airport_rows = self._records(REFERENCE_AIRPORTS_SQL.format(path=reference_airports))
         if airport_rows is not None:
             self.airports = {}
             for row in airport_rows:

@@ -178,8 +178,10 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     @app.get("/airports")
     async def airports(response: Response) -> dict[str, list[Any]]:
         """Airports of the reference (column-oriented), for the map layer and the search."""
-        response.headers["Cache-Control"] = "public, max-age=600"
-        return await asyncio.to_thread(boards.airports)
+        columns = await asyncio.to_thread(boards.airports)
+        # Not cached while empty: the map retries until the reference data is there.
+        response.headers["Cache-Control"] = "public, max-age=600" if columns["icao"] else "no-store"
+        return columns
 
     @app.get("/airports/{icao}/board")
     async def airport_board(
