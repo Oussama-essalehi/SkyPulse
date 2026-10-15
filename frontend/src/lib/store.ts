@@ -1,6 +1,6 @@
 import { altitudeColor, PALETTE } from "./colors";
 import { blendWeight, deadReckon, haversineKm } from "./geo";
-import type { Aircraft, Columns, Filters, SnapshotMessage } from "./types";
+import type { Aircraft, Alert, Columns, Filters, SnapshotMessage } from "./types";
 
 /** Binary buffers consumed directly by deck.gl (no per-object accessor calls). */
 export interface RenderBuffers {
@@ -13,6 +13,23 @@ export interface RenderBuffers {
 
 const TELEPORT_KM = 50;
 export const MAX_ALTITUDE_FILTER = 15000;
+
+/** An alert ring to draw on the map. */
+export interface AlertPoint {
+  position: [number, number];
+  severity: string;
+  icao24: string;
+}
+
+/** Whether any filter narrows the map (status, country, altitude or airport). */
+export function filtering(filters: Filters): boolean {
+  return (
+    filters.status !== "all" ||
+    filters.country !== "" ||
+    filters.minAlt > 0 ||
+    filters.maxAlt < MAX_ALTITUDE_FILTER
+  );
+}
 
 /**
  * Mutable aircraft store, deliberately outside React state: with >10 000
@@ -108,6 +125,35 @@ export class AircraftStore {
     if (alt < filters.minAlt || (filters.maxAlt < MAX_ALTITUDE_FILTER && alt > filters.maxAlt))
       return false;
     return true;
+  }
+
+  /**
+   * Alert rings for the current frame. They follow the same filters as the aircraft: a ring
+   * is drawn only around an aircraft shown on the map. An alert whose aircraft left the map
+   * (signal lost) keeps its last known position, but only while no filter is active: it
+   * cannot be checked against them. With `focus`, only the selected aircraft's alerts.
+   */
+  alertPoints(
+    alerts: Alert[],
+    filters: Filters,
+    selected: string | null,
+    focus: boolean,
+    now: number,
+  ): AlertPoint[] {
+    const points: AlertPoint[] = [];
+    const narrowed = filtering(filters);
+    for (const alert of alerts) {
+      if (focus && alert.icao24 !== selected) continue;
+      const { severity, icao24 } = alert;
+      const a = this.aircraft.get(icao24);
+      if (a) {
+        if (icao24 === selected || this.matches(a, filters))
+          points.push({ position: this.position(a, now), severity, icao24 });
+      } else if (!narrowed && alert.longitude !== null && alert.latitude !== null) {
+        points.push({ position: [alert.longitude, alert.latitude], severity, icao24 });
+      }
+    }
+    return points;
   }
 
   /**

@@ -18,7 +18,7 @@ import { MAP_STYLE, paintBasemap } from "../lib/basemap";
 import { ALERT_COLORS, altitudeColor, PALETTE } from "../lib/colors";
 import { flightPath, routeKnown, type TrailPoint } from "../lib/flight";
 import { PLANE_ATLAS, PLANE_MAPPING } from "../lib/planeIcon";
-import type { AircraftStore, RenderBuffers } from "../lib/store";
+import type { AircraftStore, AlertPoint, RenderBuffers } from "../lib/store";
 import type { Airport, Alert, Filters, FlightInfo } from "../lib/types";
 
 setWorkerUrl(maplibreWorkerUrl);
@@ -62,12 +62,6 @@ function zoomKey(zoom: number): string {
   return kinds
     .map((k) => `${zoom >= AIRPORT_MIN_ZOOM[k] ? 1 : 0}${zoom >= AIRPORT_LABEL_ZOOM[k] ? 1 : 0}`)
     .join("");
-}
-
-interface AlertPoint {
-  position: [number, number];
-  severity: string;
-  icao24: string;
 }
 
 const TOOLTIP_STYLE = {
@@ -195,24 +189,7 @@ export function MapView(props: Props) {
           code: a!.iata ?? a!.icao,
         }));
 
-      const alertPoints: AlertPoint[] = [];
-      for (const alert of alerts) {
-        if (focus && alert.icao24 !== selected) continue;
-        const a = store.aircraft.get(alert.icao24);
-        // Live aircraft: follow it; otherwise the position stored with the alert, if any.
-        if (a)
-          alertPoints.push({
-            position: store.position(a, now),
-            severity: alert.severity,
-            icao24: alert.icao24,
-          });
-        else if (alert.longitude !== null && alert.latitude !== null)
-          alertPoints.push({
-            position: [alert.longitude, alert.latitude],
-            severity: alert.severity,
-            icao24: alert.icao24,
-          });
-      }
+      const alertPoints = store.alertPoints(alerts, filters, selected, focus, now);
       const pulse = (time % 1600) / 1600;
 
       const layers = [
