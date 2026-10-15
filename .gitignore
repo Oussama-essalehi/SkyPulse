@@ -10,9 +10,16 @@ __pycache__/
 *.egg-info/
 build/
 dist/
-# Data (never committed: downloaded or recorded)
-data/
+# Data (never committed: downloaded or recorded). The folders themselves are kept so that
+# they belong to the user after a clone: Docker would create missing ones as root.
+data/*
 !data/.gitkeep
+!data/reference/
+data/reference/*
+!data/reference/.gitkeep
+!data/replay/
+data/replay/*
+!data/replay/.gitkeep
 *.duckdb
 *.duckdb.wal
 # dbt
