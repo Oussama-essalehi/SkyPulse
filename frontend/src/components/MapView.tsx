@@ -16,7 +16,7 @@ import {
 } from "../lib/airports";
 import { MAP_STYLE, paintBasemap } from "../lib/basemap";
 import { ALERT_COLORS, altitudeColor, PALETTE } from "../lib/colors";
-import { flightPath, type TrailPoint } from "../lib/flight";
+import { flightPath, routeKnown, type TrailPoint } from "../lib/flight";
 import { PLANE_ATLAS, PLANE_MAPPING } from "../lib/planeIcon";
 import type { AircraftStore, RenderBuffers } from "../lib/store";
 import type { Airport, Alert, Filters, FlightInfo } from "../lib/types";
@@ -189,7 +189,9 @@ export function MapView(props: Props) {
       const buffers = store.frame(filters, selected, focus);
       buffersRef.current = buffers;
       const selectedPos = selectedAircraft ? store.position(selectedAircraft, now) : null;
-      const path = selectedPos ? flightPath(trail, flight, selectedPos) : null;
+      // No line at all when the route is unknown (private, military, unpublished).
+      const path =
+        selectedPos && routeKnown(flight) ? flightPath(trail, flight, selectedPos) : null;
       // Departure and destination of the selected flight, always marked and named.
       const ends = (focus ? [flight?.departure, flight?.arrival] : [])
         .filter((a) => a && a.latitude !== null && a.longitude !== null)
