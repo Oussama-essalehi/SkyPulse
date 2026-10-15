@@ -23,7 +23,6 @@ flowchart LR
     DAG[Dagster<br/>schedules · asset checks dbt + Soda]
     ML[ML · MLflow]
     SUP[Superset]
-    AST[Assistant<br/>Claude / Ollama · MCP]
   end
   OS --> ING
   RP --> ING
@@ -32,11 +31,9 @@ flowchart LR
   K --> AD --> K
   K --> SINK --> S3 --> DBT --> MARTS
   DAG -. orchestre .-> DBT & ML
-  MARTS --> SUP & AST & ML
+  MARTS --> SUP & ML
   ML -- eta_model.txt --> API
   ML -- déroutements · outliers --> K
-  API -. proxy .-> AST
-  AST -. état live .-> API
 ```
 
 ## Flux temps réel
@@ -116,30 +113,6 @@ provisionné *SkyRadar — Supervision*. Côté API : avions en mémoire, client
 du dernier snapshot, état de la connexion à Redpanda, requêtes par route et statut, refus
 des limites de débit, recherches de routes adsbdb.
 
-## Assistant
-
-`POST /assistant/ask` (proxifié par l'API) → boucle d'outils : Claude via le *tool runner*
-du SDK Anthropic, ou un modèle Ollama. Outils : `run_sql` (SELECT DuckDB sur les marts,
-garde-fous sqlglot, `LIMIT` forcé, timeout, accès fichier désactivé), `get_live_stats`,
-`count_live_aircraft`, `get_active_alerts` (état en direct via l'API). Les mêmes outils sont
-exposés par un serveur MCP ([mcp.md](mcp.md)).
-
-Conversation : le site renvoie les 6 derniers échanges réussis avec chaque question, pour
-les relances (« et en Espagne ? ») ; les échanges hors sujet ou en erreur n'en font pas
-partie.
-
-Périmètre : l'assistant ne répond qu'aux questions sur le trafic aérien, l'aviation et
-SkyRadar. Claude suit la consigne du prompt système (réponse fixe `OFF_TOPIC_ANSWER`, sans
-outil). Un petit modèle local la suit mal, et sur une relance il recopie les chiffres de la
-réponse précédente au lieu de rappeler les outils. Avec Ollama, un premier appel court
-(sortie JSON contrainte par un schéma, exemples dans le prompt, question précédente en
-contexte) réécrit donc la question en question autonome (« et en Espagne ? » → « Combien
-d'avions survolent l'Espagne en ce moment ? ») et la classe (`on_topic`). Hors sujet, la
-réponse fixe est renvoyée sans lancer la boucle d'outils ; sinon la boucle répond à la
-question réécrite. Les salutations et remerciements passent sans appel au modèle. Vérifié
-sur `qwen2.5:3b` : 35/35 sur deux jeux de questions (hors sujet, trafic, relances, météo
-d'aéroport ou non).
-
 ## Services et ports
 
 | Service | Profil | Port |
@@ -156,6 +129,5 @@ d'aéroport ou non).
 | dagster-webserver / daemon | full | 3001 |
 | mlflow | full | 5000 |
 | superset | full | 8088 |
-| assistant | full | interne (8001) |
 | prometheus / alertmanager | full | 9090 / interne (9093) |
 | grafana | full | 3002 |

@@ -14,6 +14,7 @@ Hetzner, OVH, Scaleway…), avec TLS automatique via Caddy.
 git clone <ce dépôt> skyradar && cd skyradar
 cp .env.example .env
 # .env : OPENSKY_CLIENT_ID / OPENSKY_CLIENT_SECRET (96 s au lieu de 960 s), SKYRADAR_DOMAIN=radar.example.com
+python3 scripts/seed_reference_data.py   # référentiels (aéroports, base aéronefs, compagnies)
 docker compose -f docker-compose.yml -f deploy/compose.prod.yml --profile demo up -d --build --wait
 ```
 
@@ -39,7 +40,6 @@ docker compose -f docker-compose.yml -f deploy/compose.prod.yml --profile demo u
 
 | Risque | Protection | Réglage (`.env`) |
 |---|---|---|
-| Coût de l'assistant (chaque question appelle un LLM) | 5 questions / min et 40 / jour par client, **300 / jour au total** | `API_RATE_ASSISTANT`, `API_ASSISTANT_BUDGET` |
 | Clics en rafale sur les avions (une recherche de route par clic) | 60 fiches / min par client | `API_RATE_AIRCRAFT` |
 | Tableaux et météo d'aéroport (jusqu'à 40 recherches de route par tableau) | 20 requêtes / min par client, METAR en cache 10 min ; vers adsbdb : 6 requêtes en parallèle et **300 / min au total** | `API_RATE_AIRPORT`, `ADSBDB_BUDGET` |
 | Connexions WebSocket ouvertes en masse | 4 par client | `API_MAX_WS_PER_CLIENT` |
@@ -64,7 +64,7 @@ différent à chaque requête.
 - **Alertes** (`infra/monitoring/rules.yml`, testées par `make test-monitoring`) : service
   injoignable, ingestion arrêtée (aucun snapshot depuis trois intervalles de polling),
   crédits OpenSky presque épuisés, lake plus écrit depuis 15 min, carte figée, API
-  déconnectée de Redpanda, retard du sink, budget de l'assistant atteint. Pour être
+  déconnectée de Redpanda, retard du sink. Pour être
   prévenu, décommenter le récepteur Slack d'`infra/monitoring/alertmanager.yml` (webhook
   entrant) ; sans cela les alertes restent visibles dans Grafana et Prometheus.
 - **Rétention** : le job Dagster `lake_maintenance` (02:15) supprime les partitions brutes
@@ -125,7 +125,7 @@ worker » pour l'ingestion et le détecteur), avec les mêmes variables d'enviro
 - **Licence OpenSky** : usage non commercial uniquement ; une démo publique doit l'indiquer
   (c'est le cas dans le pied de page de la carte).
 - **Secrets** : uniquement côté serveur (`fly secrets`, `.env`) ; le navigateur ne reçoit
-  aucune clé, l'assistant passe par le proxy `/assistant/ask` de l'API.
+  aucune clé.
 - **Coûts** : le profil `demo` n'a pas besoin du lake. Pour historiser depuis l'option B,
   ajouter le `parquet-sink` (même image que le détecteur, `cmd` par défaut) avec un bucket
   S3 managé (Cloudflare R2, AWS S3…) : `S3_ENDPOINT_URL`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`.

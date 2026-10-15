@@ -1,5 +1,5 @@
 -- Every aircraft of the OpenSky database with its ICAO type details (~500k rows).
--- Read by the API for point lookups (aircraft panel) and by the assistant.
+-- Read by the API for point lookups (aircraft panel).
 select
     r.icao24,
     r.registration,

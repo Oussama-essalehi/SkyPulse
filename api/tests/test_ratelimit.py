@@ -1,8 +1,4 @@
-import json
-
-import httpx
 import pytest
-import respx
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
@@ -35,34 +31,17 @@ def app_client(**settings: object) -> TestClient:
     return TestClient(create_app(ApiSettings(API_CONSUME=False, **settings)))  # type: ignore[arg-type]
 
 
-def test_assistant_is_rate_limited_per_client_and_globally() -> None:
-    # Unreachable assistant: allowed calls answer 503, refused ones 429.
-    client = app_client(
-        ASSISTANT_URL="http://127.0.0.1:9",
-        API_RATE_ASSISTANT="2/minute",
-        API_ASSISTANT_BUDGET="3/day",
-    )
-    ask = {"question": "Combien d'avions ?"}
+def test_aircraft_detail_is_rate_limited_per_client() -> None:
+    client = app_client(API_RATE_AIRCRAFT="2/minute")
     alice = {"X-Real-IP": "203.0.113.1"}
-    assert client.post("/assistant/ask", json=ask, headers=alice).status_code == 503
-    assert client.post("/assistant/ask", json=ask, headers=alice).status_code == 503
-    refused = client.post("/assistant/ask", json=ask, headers=alice)
+    assert client.get("/aircraft/abc123", headers=alice).status_code == 404
+    assert client.get("/aircraft/abc123", headers=alice).status_code == 404
+    refused = client.get("/aircraft/abc123", headers=alice)
     assert refused.status_code == 429
     assert "Retry-After" in refused.headers
-    assert "Trop de questions" in refused.json()["detail"]
-    # Another client still gets through... until the global daily budget is spent.
+    # Another client still gets through.
     bob = {"X-Real-IP": "203.0.113.2"}
-    assert client.post("/assistant/ask", json=ask, headers=bob).status_code == 503
-    budget = client.post("/assistant/ask", json=ask, headers=bob)
-    assert budget.status_code == 429
-    assert "quota du jour" in budget.json()["detail"]
-
-
-def test_aircraft_detail_is_rate_limited() -> None:
-    client = app_client(API_RATE_AIRCRAFT="2/minute")
-    assert client.get("/aircraft/abc123").status_code == 404
-    assert client.get("/aircraft/abc123").status_code == 404
-    assert client.get("/aircraft/abc123").status_code == 429
+    assert client.get("/aircraft/abc123", headers=bob).status_code == 404
 
 
 def test_websocket_connections_per_client() -> None:
@@ -88,30 +67,3 @@ def test_metrics_endpoint() -> None:
     assert "skyradar_api_kafka_connected 0.0" in body
     assert 'skyradar_api_rate_limited_total{limiter="aircraft"}' in body
     assert 'route="/aircraft/{icao24}",status="429"' in body
-
-
-def test_assistant_proxy_forwards_the_conversation_and_explains_timeouts() -> None:
-    client = app_client(ASSISTANT_URL="http://assistant:8001")
-    history = [
-        {"role": "user", "content": "Combien d'avions en France ?"},
-        {"role": "assistant", "content": "1 200 avions."},
-    ]
-    with respx.mock as mock:
-        route = mock.post("http://assistant:8001/ask").mock(
-            side_effect=[
-                httpx.Response(200, json={"answer": "800 avions."}),
-                httpx.ReadTimeout("slow model"),
-            ]
-        )
-        ok = client.post("/assistant/ask", json={"question": "et en Espagne ?", "history": history})
-        slow = client.post("/assistant/ask", json={"question": "et en Italie ?"})
-    assert ok.json() == {"answer": "800 avions."}
-    assert json.loads(route.calls[0].request.content)["history"] == history
-    assert slow.status_code == 504
-    assert "trop de temps" in slow.json()["detail"]
-    # History entries are validated (role, size).
-    bad = client.post(
-        "/assistant/ask",
-        json={"question": "et ici ?", "history": [{"role": "system", "content": "x"}]},
-    )
-    assert bad.status_code == 422

@@ -1,4 +1,4 @@
--- Airports usable as flight endpoints, one row per ICAO code (API, assistant, Superset maps).
+-- Airports usable as flight endpoints, one row per ICAO code (API, Superset maps).
 select
     airport_icao,
     airport_iata,

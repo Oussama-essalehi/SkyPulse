@@ -1,12 +1,4 @@
-import type { Turn } from "./chat";
-import type {
-  AircraftDetail,
-  AirportBoard,
-  AirportColumns,
-  Alert,
-  AssistantAnswer,
-  WeatherResponse,
-} from "./types";
+import type { AircraftDetail, AirportBoard, AirportColumns, Alert, WeatherResponse } from "./types";
 
 /**
  * Base URL of the SkyRadar API. Defaults to the same-origin `/api` prefix
@@ -21,8 +13,8 @@ export function liveSocketUrl(): string {
   return `${proto}://${window.location.host}${API_BASE}/ws/live`;
 }
 
-async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, init);
+async function getJson<T>(path: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`);
   if (!response.ok) {
     let detail = response.statusText;
     try {
@@ -44,10 +36,4 @@ export const api = {
   airportBoard: (icao: string, limit = 40) =>
     getJson<AirportBoard>(`/airports/${icao}/board?limit=${limit}`),
   airportWeather: (icao: string) => getJson<WeatherResponse>(`/airports/${icao}/weather`),
-  ask: (question: string, history: Turn[] = []) =>
-    getJson<AssistantAnswer>("/assistant/ask", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, history }),
-    }),
 };

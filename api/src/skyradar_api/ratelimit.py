@@ -1,7 +1,7 @@
 """Per-client rate limits for a public deployment.
 
-The expensive endpoints are the assistant (each question costs LLM tokens) and the
-aircraft card (one route lookup per click). Limits are kept in memory: SkyRadar runs a
+The expensive endpoints are the aircraft card (one route lookup per click) and the
+airport board (a few dozen route lookups per request). Limits are kept in memory: SkyRadar runs a
 single API instance, and a restart resetting the counters is acceptable for a demo.
 
 * Rules read like ``"5/minute,30/day"`` (sliding windows, all must hold).

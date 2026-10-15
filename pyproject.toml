@@ -17,7 +17,6 @@ members = [
     "streaming",
     "pipeline/dagster",
     "ml",
-    "assistant",
 ]
 
 [tool.uv.sources]
@@ -27,7 +26,6 @@ skyradar-api = { workspace = true }
 skyradar-streaming = { workspace = true }
 skyradar-orchestration = { workspace = true }
 skyradar-ml = { workspace = true }
-skyradar-assistant = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -54,7 +52,7 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 [tool.ruff.lint.isort]
 known-first-party = [
     "skyradar_common", "skyradar_ingestion", "skyradar_api", "skyradar_streaming",
-    "skyradar_orchestration", "skyradar_ml", "skyradar_assistant",
+    "skyradar_orchestration", "skyradar_ml",
 ]
 
 [tool.mypy]
@@ -75,4 +73,4 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = ["integration: requires the docker compose stack (make up-demo)"]
 addopts = "-m 'not integration' --import-mode=importlib"
-testpaths = ["libs/common/tests", "ingestion/tests", "api/tests", "streaming/tests", "ml/tests", "assistant/tests", "pipeline/dagster/tests", "tests"]
+testpaths = ["libs/common/tests", "ingestion/tests", "api/tests", "streaming/tests", "ml/tests", "pipeline/dagster/tests", "tests"]

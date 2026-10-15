@@ -29,7 +29,7 @@ jobs:
           uv run ruff check .
           uv run ruff format --check .
       - name: Mypy
-        run: uv run mypy libs/common/src ingestion/src api/src streaming/src assistant/src ml/src
+        run: uv run mypy libs/common/src ingestion/src api/src streaming/src ml/src
       - name: dbt manifest (needed by the Dagster definitions test)
         run: make dbt-parse
       - name: Unit tests
@@ -86,10 +86,6 @@ jobs:
           print("forecast", forecast.run(root, min_hours=2, holdout=1).status)
           print("endpoint clusters", endpoints.run(root, min_endpoints=1).status)
           PY
-      - name: Assistant eval - reference queries (no LLM call in CI)
-        env:
-          SKYRADAR_MARTS_ROOT: ${{ github.workspace }}/pipeline/dbt/target/marts
-        run: uv run python assistant/eval/run_eval.py --dry-run
       - name: dbt docs
         working-directory: pipeline/dbt
         env:

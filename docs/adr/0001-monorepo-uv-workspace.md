@@ -4,7 +4,7 @@
 - **Date** : 2026-10-13
 
 ## Contexte
-Sept composants Python (ingestion, API, streaming, ML, assistant, orchestration, lib commune)
+Six composants Python (ingestion, API, streaming, ML, orchestration, lib commune)
 partagent les mêmes schémas de messages et doivent être construits en images Docker distinctes.
 
 ## Décision

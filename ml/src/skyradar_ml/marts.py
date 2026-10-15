@@ -33,7 +33,7 @@ def read_mart(name: str, root: Path | None = None) -> pd.DataFrame | None:
 
 
 def write_parquet_atomic(df: pd.DataFrame, path: Path) -> Path:
-    """Write then rename: readers (Superset, API, assistant) never see a partial file."""
+    """Write then rename: readers (Superset, API) never see a partial file."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".parquet.tmp")
     con = duckdb.connect(":memory:")

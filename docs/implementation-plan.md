@@ -90,8 +90,6 @@ Flux historique et analytique :
 - [x] **ETA** : features dbt, LightGBM vs baseline distance/vitesse (MAE, MAPE), seuil
   d'historique, barrière de promotion, servi par l'API ([ADR 0008](adr/0008-ml-models.md)).
 - [x] **Prévision de trafic** : Holt-Winters (statsmodels) par zone vs naïf saisonnier.
-- [x] **Assistant** : boucle d'outils Claude (ou Ollama), garde-fous sqlglot, outils
-  « état live », jeu d'évaluation de 20 questions, serveur MCP.
 - [x] **Dashboards** : *Trafic aérien*, *Modèles ML* (performance de l'ETA, prévision,
   outliers, déroutements, terrains hors référentiel) et *Compagnies et flotte* (base
   aéronefs OpenSky). *Hors périmètre* : ponctualité (pas d'horaires programmés dans l'ADS-B).
@@ -103,7 +101,6 @@ Flux historique et analytique :
 - [x] GIF de la carte en direct dans le README.
 - [x] Base aéronefs OpenSky, types OACI et compagnies : fiche avion, marts, dashboard.
 - [x] DBSCAN des décollages / atterrissages hors référentiel.
-- [x] Évaluation de l'assistant suivie dans MLflow.
 - [x] Vent en altitude (Open-Meteo) comme variable de l'ETA, mesurée par ablation.
 
 ## Dépendances entre briques
@@ -116,7 +113,7 @@ flowchart LR
   redpanda --> sink[parquet sink] --> s3[(S3 / SeaweedFS)]
   redpanda --> anomaly --> redpanda
   s3 --> dbt --> marts[(marts Parquet)]
-  marts --> superset & assistant & ml
+  marts --> superset & ml
   dagster -.orchestre.-> dbt & ml
   ml --> mlflow
 ```
